@@ -1,0 +1,6 @@
+{"text": "The first record in a JSONL file becomes its own document, with the line number kept in the filename so provenance survives."}
+{"text": "The second record. Each line is independent, which is why one bad line does not spoil the rest of the file."}
+{"id": 3, "body": "this line has no text field and should be skipped"}
+{"text": ""}
+this line is not JSON at all
+{"text": "The last good record, proving the parser kept going after three bad lines in a row."}

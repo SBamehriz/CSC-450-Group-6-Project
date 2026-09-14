@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+
+      - run: uv sync --frozen
+
+      - name: Install torch (CPU build)
+        run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  api-types-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: server/uv.lock
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: uv sync --frozen
+        working-directory: server
+
+      - run: python scripts/gen_api_types.py
+
+      - name: Fail if the committed types are stale
+        run: |
+          if ! git diff --exit-code -- web/src/api/types.ts; then
+            echo "::error::web/src/api/types.ts is out of date. Run python scripts/gen_api_types.py and commit the result."
+            exit 1
+          fi

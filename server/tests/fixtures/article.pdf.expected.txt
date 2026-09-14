@@ -1,0 +1,18 @@
+The quick brown fox jumps over the lazy dog. This page has a real text
+layer, so pypdf can pull the words straight back out of it without any
+optical character recognition at all. A scanned page has no text layer
+and comes out nearly empty, which is what the other fixture stands for.
+A second sentence follows here so the document clears the length floor
+that the scanned-PDF check uses to spot an image-only page.
+The quick brown fox jumps over the lazy dog. This page has a real text
+layer, so pypdf can pull the words straight back out of it without any
+optical character recognition at all. A scanned page has no text layer
+and comes out nearly empty, which is what the other fixture stands for.
+A second sentence follows here so the document clears the length floor
+that the scanned-PDF check uses to spot an image-only page.
+The quick brown fox jumps over the lazy dog. This page has a real text
+layer, so pypdf can pull the words straight back out of it without any
+optical character recognition at all. A scanned page has no text layer
+and comes out nearly empty, which is what the other fixture stands for.
+A second sentence follows here so the document clears the length floor
+that the scanned-PDF check uses to spot an image-only page.

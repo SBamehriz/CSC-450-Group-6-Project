@@ -1,0 +1,48 @@
+Where things live
+=================
+
+web/
+    Frontend. React + TypeScript.
+
+web/src/pages/
+    One file per screen.
+
+web/src/components/
+    Shared UI pieces and the page shell.
+
+web/src/api/
+    The fetch client and the generated API types.
+
+web/src/theme.css
+    All the styling.
+
+server/
+    Backend. The FastAPI app, the database models, and the ingestion pipeline.
+
+server/forge/train/
+    The GPT model and its size presets.
+
+server/alembic/
+    Database migrations.
+
+server/tests/
+    Backend tests, with sample upload files in tests/fixtures/.
+
+scripts/
+    start.py runs the whole app. gen_api_types.py regenerates the frontend
+    API types. train_spike.py measures training speed on your GPU.
+
+forge-data/
+    Your local database and uploaded files. Not stored in Git.
+
+
+Running it
+==========
+
+    cd server && uv sync
+    cd .. && uv run --project server python scripts/start.py
+
+Opens at http://127.0.0.1:8000
+
+Backend tests:   cd server && uv run pytest
+Frontend tests:  cd web && npm test

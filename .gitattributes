@@ -1,0 +1,7 @@
+# windows checks out CRLF by default
+* text=auto eol=lf
+
+# exact bytes matter
+server/tests/fixtures/compressed.txt.gz binary
+server/tests/fixtures/unsupported.docx  binary
+server/tests/fixtures/latin1.txt        binary

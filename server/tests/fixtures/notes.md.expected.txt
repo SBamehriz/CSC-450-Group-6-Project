@@ -1,0 +1,12 @@
+# Cleaning notes
+
+Markdown is kept **as-is** — the syntax is fine training text and stripping it
+would be a decision we cannot undo later.
+
+## What we do change
+
+- collapse runs of blank lines
+- strip trailing whitespace
+- drop repeated boilerplate lines
+
+That is all.

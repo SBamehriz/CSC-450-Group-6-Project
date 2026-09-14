@@ -1,0 +1,3 @@
+Why small models are the right instrument
+Training compute scales roughly with the product of parameters and tokens, which means a fixed budget buys either one large model or many small ones. When the research question is about the data rather than the model, many small runs is plainly the better instrument.
+A model of nine million parameters will never answer a question or hold a conversation. It will, however, learn the register and vocabulary of whatever corpus it is shown, and it will do so in under an hour. That is enough to measure what a change in the training mixture actually does.

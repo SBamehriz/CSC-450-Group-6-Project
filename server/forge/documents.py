@@ -96,7 +96,7 @@ def upload_documents(
         raise ApiError(
             400,
             "too_many_files",
-            f"{len(files)} files in one go is too many — the limit is "
+            f"{len(files)} files in one go is too many. The limit is "
             f"{MAX_FILES_PER_REQUEST}. Split it into smaller batches.",
         )
 
@@ -156,7 +156,7 @@ def _ingest_one(
             )
         ).scalar_one_or_none()
         if twin is not None:
-            message = f"Duplicate of {twin.filename} — identical text after cleaning."
+            message = f"Duplicate of {twin.filename}. Identical text after cleaning."
             session.add(
                 Document(
                     bucket_id=bucket_id,
@@ -250,7 +250,7 @@ def get_document_text(
         raise ApiError(
             409,
             "no_text",
-            f"This document has no cleaned text — it {document.status} at upload.",
+            f"This document has no cleaned text. It {document.status} at upload.",
         )
     window, total = _read_text(document.text_uri, offset, length)
     return DocumentText(text=window, offset=offset, length=len(window), total=total)

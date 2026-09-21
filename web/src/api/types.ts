@@ -261,7 +261,7 @@ export interface components {
     };
     /**
      * DocumentText
-     * @description A window into the cleaned text — never the whole 50MB document.
+     * @description A window into the cleaned text, never the whole 50MB document.
      */
     DocumentText: {
       /** Text */

@@ -124,16 +124,16 @@ SCANNED_PDF = _make_pdf(["12"])
 
 # trailing spaces below are deliberate
 NOTES_MD = (
-    "# Cleaning notes\n"
-    "\n"
-    "Markdown is kept **as-is** — the syntax is fine training text and stripping it\n"
-    "would be a decision we cannot undo later.\n"
-    "\n"
-    "## What we do change\n"
-    "\n"
-    "- collapse runs of blank lines\n"
-    "- strip trailing whitespace   \n"
-    "- drop repeated boilerplate lines\n"
-    "\n"
-    "That is all.\n"
-).encode()
+    b"# Cleaning notes\n"
+    b"\n"
+    b"Markdown is kept **as-is**, the syntax is fine training text and stripping it\n"
+    b"would be a decision we cannot undo later.\n"
+    b"\n"
+    b"## What we do change\n"
+    b"\n"
+    b"- collapse runs of blank lines\n"
+    b"- strip trailing whitespace   \n"
+    b"- drop repeated boilerplate lines\n"
+    b"\n"
+    b"That is all.\n"
+)

@@ -59,16 +59,67 @@ def test_htm_is_html():
 
 def test_unsupported_extension_names_what_we_take():
     with pytest.raises(ParseError) as caught:
-        check_supported("thesis.docx")
+        check_supported("archive.zip")
     message = str(caught.value)
-    assert ".docx" in message
-    for good in (".txt", ".md", ".html", ".pdf", ".jsonl"):
+    assert ".zip" in message
+    for good in (".txt", ".md", ".html", ".pdf", ".docx", ".png", ".jsonl"):
         assert good in message
 
 
 def test_uploading_an_unsupported_file_fails_the_same_way():
     with pytest.raises(ParseError):
+        parse("archive.zip", b"fake zip bytes")
+
+
+def test_uploading_corrupted_docx_fails():
+    with pytest.raises(ParseError):
         parse("thesis.docx", read("unsupported.docx"))
+
+
+def test_docx_parse_success():
+    import io
+    import docx
+
+    doc = docx.Document()
+    doc.add_heading("Docx Ingestion Header", level=1)
+    doc.add_paragraph("This is body text in a docx file.")
+    buf = io.BytesIO()
+    doc.save(buf)
+
+    [document] = parse("notes.docx", buf.getvalue())
+    assert "Docx Ingestion Header" in document.text
+    assert "body text in a docx file" in document.text
+    assert document.filename == "notes.docx"
+
+
+def test_image_parse_with_ocr():
+    import io
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (320, 100), color="white")
+    d = ImageDraw.Draw(img)
+    d.text((10, 30), "Invoice Receipt 2026", fill="black")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+
+    [document] = parse("invoice.png", buf.getvalue())
+    assert any(w in document.text for w in ("Invoice", "Receipt", "2026"))
+    assert document.filename == "invoice.png"
+
+
+def test_scanned_pdf_ocr_success():
+    import io
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (320, 100), color="white")
+    d = ImageDraw.Draw(img)
+    d.text((10, 30), "Scanned Contract Page", fill="black")
+    buf = io.BytesIO()
+    img.save(buf, format="PDF")
+
+    [document] = parse("contract_scan.pdf", buf.getvalue())
+    assert any(w in document.text for w in ("Scanned", "Contract", "Page"))
+    assert document.filename == "contract_scan.pdf"
 
 
 def test_plain_text():

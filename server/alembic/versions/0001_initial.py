@@ -52,7 +52,7 @@ def upgrade() -> None:
             name="ck_documents_status",
         ),
         sa.CheckConstraint(
-            "source_format IN ('txt', 'md', 'html', 'pdf', 'jsonl', 'other')",
+            "source_format IN ('txt', 'md', 'html', 'pdf', 'docx', 'image', 'jsonl', 'other')",
             name="ck_documents_source_format",
         ),
         sa.UniqueConstraint("bucket_id", "content_hash", name="uq_documents_bucket_hash"),

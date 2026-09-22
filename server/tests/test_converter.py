@@ -1,5 +1,9 @@
 import json
+import sys
 from pathlib import Path
+
+# Ensure local forge package takes precedence
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
 
@@ -116,6 +120,34 @@ def test_parse_with_converter_txt():
     assert len(docs) == 1
     assert docs[0].text == "Direct converter parse text"
     assert docs[0].filename == "sample.txt"
+
+
+def test_convert_image_file_with_ocr(tmp_path: Path):
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (300, 100), color="white")
+    d = ImageDraw.Draw(img)
+    d.text((10, 30), "Docling Image OCR", fill="black")
+    img_path = tmp_path / "test_ocr.png"
+    img.save(img_path)
+
+    record = convert_file(img_path)
+    assert record["filename"] == "test_ocr.png"
+    assert any(term in record["text"] for term in ("Docling", "Image", "OCR"))
+
+
+def test_convert_bytes_image_with_ocr():
+    import io
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (300, 100), color="white")
+    d = ImageDraw.Draw(img)
+    d.text((10, 30), "Docling In-Memory OCR", fill="black")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+
+    text = convert_bytes("test_mem.png", buf.getvalue())
+    assert any(term in text for term in ("Docling", "Memory", "OCR"))
 
 
 @pytest.mark.slow

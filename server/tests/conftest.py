@@ -1,7 +1,11 @@
 import os
+import sys
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+
+# Ensure local repository's forge package takes precedence
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
 from fastapi.testclient import TestClient

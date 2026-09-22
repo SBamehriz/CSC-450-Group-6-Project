@@ -61,6 +61,7 @@ reportMissingImports = "warning"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "slow: takes more than a few seconds (still runs in CI)",
 ]

@@ -22,8 +22,8 @@ This module can be used as both an **importable Python library** within the Forg
 
 ## Features
 
-- **Multi-Format Extraction**: Parses `.pdf`, `.docx`, `.txt`, and `.md` files cleanly into Markdown text records.
-- **Powered by Docling**: Leverages Docling's advanced document layout analysis, table recognition, and OCR capabilities to preserve document structure.
+- **Multi-Format Extraction**: Parses `.pdf`, `.docx`, images (`.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp`), `.txt`, and `.md` files cleanly into Markdown text records.
+- **Powered by Docling & RapidOCR**: Leverages Docling's advanced document layout analysis, table recognition, and OCR capabilities to preserve document structure and extract text from scanned PDFs and raster images.
 - **Lazy Singleton Loading**: Heavy Docling models and dependencies are loaded lazily on demand (`get_converter()`), avoiding startup penalty for server routes or tasks that do not perform document conversions.
 - **In-Memory & File-Based Ingestion**: Supports converting from filesystem paths (`convert_file`), directory trees (`convert_directory`), or raw byte streams (`convert_bytes` with automatic tempfile management).
 - **Graceful Error Recovery**: Batch operations log and skip problematic files without aborting the entire pipeline.
@@ -36,8 +36,9 @@ This module can be used as both an **importable Python library** within the Forg
 
 | Format | Extension | Engine / Method |
 | :--- | :--- | :--- |
-| **Portable Document Format** | `.pdf` | Docling (`DocumentConverter` -> Markdown) |
+| **Portable Document Format** | `.pdf` | Native text extraction (`pypdf`) with Docling RapidOCR fallback for scanned pages |
 | **Microsoft Word** | `.docx` | Docling (`DocumentConverter` -> Markdown) |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp` | Docling + RapidOCR (`DocumentConverter` -> Markdown) |
 | **Markdown** | `.md` | Native `utf-8-sig` decoding |
 | **Plain Text** | `.txt` | Native `utf-8-sig` decoding |
 

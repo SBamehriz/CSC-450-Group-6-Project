@@ -47,7 +47,7 @@ def _created_at() -> Mapped[datetime]:
 
 
 DOCUMENT_STATUSES = ("pending", "parsed", "failed", "rejected")
-SOURCE_FORMATS = ("txt", "md", "html", "pdf", "jsonl", "other")
+SOURCE_FORMATS = ("txt", "md", "html", "pdf", "docx", "image", "jsonl", "other")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:

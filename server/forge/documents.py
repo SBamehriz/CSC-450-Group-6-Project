@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.ingest import ParseError, clean, looks_mis_decoded, parse, split_extension
+from forge.ingest import (
+    IMAGE_EXTENSIONS,
+    ParseError,
+    clean,
+    looks_mis_decoded,
+    parse,
+    split_extension,
+)
 from forge.models import Bucket, Document
 from forge.schemas import (
     DocumentOut,
@@ -197,7 +204,11 @@ def _ingest_one(
 def _stored_format(filename: str) -> str:
     extension, _ = split_extension(filename)
     extension = "html" if extension == "htm" else extension  # treat htm like html
-    return extension if extension in ("txt", "md", "html", "pdf", "jsonl") else "other"
+    if extension in ("txt", "md", "html", "pdf", "docx", "jsonl"):
+        return extension
+    if extension in IMAGE_EXTENSIONS:
+        return "image"
+    return "other"
 
 
 @router.get("/documents", response_model=Page[DocumentOut])

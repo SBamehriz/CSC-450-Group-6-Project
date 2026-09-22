@@ -12,7 +12,14 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 from forge.ingest import Parsed, ParseError
 
 _converter = None
-SUPPORTED_CONVERTER_EXTENSIONS = (".pdf", ".docx", ".txt", ".md")
+SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")
+SUPPORTED_CONVERTER_EXTENSIONS = (
+    ".pdf",
+    ".docx",
+    ".txt",
+    ".md",
+    *SUPPORTED_IMAGE_EXTENSIONS,
+)
 
 
 def get_converter():
@@ -32,7 +39,7 @@ def get_converter():
 
 
 def convert_file(file_path: Path | str) -> dict[str, str]:
-    """Convert a single file (.pdf, .docx, .txt, .md) to a record dict:
+    """Convert a single file (.pdf, .docx, image, .txt, .md) to a record dict:
 
     {'filename': <name>, 'text': <extracted_content>}
     """
@@ -44,7 +51,7 @@ def convert_file(file_path: Path | str) -> dict[str, str]:
     if ext in (".txt", ".md"):
         # utf-8-sig transparently handles standard UTF-8 and UTF-8 with BOM
         text = path.read_text(encoding="utf-8-sig", errors="ignore")
-    elif ext in (".pdf", ".docx"):
+    elif ext in (".pdf", ".docx") or ext in SUPPORTED_IMAGE_EXTENSIONS:
         converter = get_converter()
         result = converter.convert(str(path))
         text = result.document.export_to_markdown()
@@ -58,11 +65,11 @@ def convert_file(file_path: Path | str) -> dict[str, str]:
 
 
 def convert_bytes(filename: str, raw: bytes) -> str:
-    """Extract markdown/text from raw bytes for .pdf, .docx, .txt, or .md."""
+    """Extract markdown/text from raw bytes for .pdf, .docx, images, .txt, or .md."""
     ext = Path(filename).suffix.lower()
     if ext in (".txt", ".md"):
         return raw.decode("utf-8-sig", errors="ignore")
-    elif ext in (".pdf", ".docx"):
+    elif ext in (".pdf", ".docx") or ext in SUPPORTED_IMAGE_EXTENSIONS:
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp.write(raw)
             tmp_path = Path(tmp.name)
@@ -122,7 +129,7 @@ def convert_directory(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert PDF, DOCX, and TXT files to JSON using Docling."
+        description="Convert PDF, DOCX, image, and text files to JSON using Docling."
     )
     parser.add_argument(
         "-i",

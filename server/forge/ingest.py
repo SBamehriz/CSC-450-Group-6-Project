@@ -9,7 +9,8 @@ from io import BytesIO
 import pypdf
 import trafilatura
 
-SUPPORTED = ("txt", "md", "html", "htm", "pdf", "jsonl", "json")
+IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp")
+SUPPORTED = ("txt", "md", "html", "htm", "pdf", "docx", *IMAGE_EXTENSIONS, "jsonl", "json")
 
 MIN_PDF_CHARS_PER_PAGE = 200
 MIN_HTML_CHARS = 200
@@ -79,25 +80,46 @@ def parse_html(raw: bytes) -> str:
     return text
 
 
-def parse_pdf(raw: bytes) -> str:
+def parse_pdf(raw: bytes, filename: str = "document.pdf") -> str:
+    parse_err = None
+    pages = []
     try:
         reader = pypdf.PdfReader(BytesIO(raw))
         pages = [page.extract_text() or "" for page in reader.pages]
     except Exception as problem:
-        raise ParseError(f"This PDF could not be read ({problem}).") from problem
+        parse_err = problem
 
-    if not pages:
+    if not parse_err and not pages:
         raise ParseError("This PDF has no pages.")
 
     text = "\n\n".join(pages)
-    # scanned pdf, no ocr
-    if len(text.strip()) < MIN_PDF_CHARS_PER_PAGE * len(pages):
+    # If text layer has sufficient text, return directly
+    if pages and len(text.strip()) >= MIN_PDF_CHARS_PER_PAGE * len(pages):
+        return text
+
+    # Scanned PDF or insufficient text layer: fall back to OCR via converter
+    try:
+        from forge.converter import convert_bytes
+
+        ocr_text = convert_bytes(filename, raw)
+    except Exception as problem:
+        if parse_err is not None:
+            raise ParseError(f"This PDF could not be read ({parse_err}).") from parse_err
         raise ParseError(
-            f"This looks like a scanned PDF — only {len(text.strip())} characters of "
-            f"text across {len(pages)} page(s). We do not do OCR. Convert it to text "
-            "elsewhere and upload that."
+            f"This looks like a scanned PDF and OCR conversion failed ({problem})."
+        ) from problem
+
+    if not ocr_text.strip():
+        if parse_err is not None:
+            raise ParseError(f"This PDF could not be read ({parse_err}).") from parse_err
+        char_count = len(text.strip())
+        page_info = f"across {len(pages)} page(s)" if pages else ""
+        raise ParseError(
+            f"This looks like a scanned PDF — only {char_count} characters of "
+            f"text {page_info}. OCR was unable to extract readable text."
         )
-    return text
+
+    return ocr_text
 
 
 def parse_jsonl(raw: bytes, filename: str) -> list[Parsed]:
@@ -193,7 +215,9 @@ def parse(filename: str, raw: bytes) -> list[Parsed]:
     if fmt == "html":
         return [Parsed(text=parse_html(raw), filename=filename)]
     if fmt == "pdf":
-        return [Parsed(text=parse_pdf(raw), filename=filename)]
+        return [Parsed(text=parse_pdf(raw, filename=filename), filename=filename)]
+    if fmt == "docx" or fmt in IMAGE_EXTENSIONS:
+        return parse_with_converter(filename, raw)
     if fmt == "json":
         return parse_json(raw, filename)
     return parse_jsonl(raw, filename)

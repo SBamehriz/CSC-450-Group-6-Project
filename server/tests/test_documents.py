@@ -107,8 +107,50 @@ def test_one_bad_file_does_not_spoil_the_batch(client, bucket):
 def test_an_unreadable_file_records_what_it_actually_was(client, bucket):
     upload(client, bucket, [("thesis.docx", b"PK not a document we read")])
     document = client.get("/api/documents").json()["items"][0]
+    assert document["source_format"] == "docx"
+    assert document["status"] == "failed"
+
+
+def test_an_unsupported_file_records_as_other(client, bucket):
+    upload(client, bucket, [("data.csv", b"col1,col2\n1,2")])
+    document = client.get("/api/documents").json()["items"][0]
     assert document["source_format"] == "other"
     assert document["status"] == "failed"
+
+
+def test_upload_valid_docx_and_image(client, bucket):
+    import io
+    import docx
+    from PIL import Image, ImageDraw
+
+    doc = docx.Document()
+    doc.add_paragraph("A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5)
+    buf_docx = io.BytesIO()
+    doc.save(buf_docx)
+
+    img = Image.new("RGB", (400, 120), color="white")
+    d = ImageDraw.Draw(img)
+    d.text((10, 40), "Uploaded Invoice Scan 2026", fill="black")
+    buf_img = io.BytesIO()
+    img.save(buf_img, format="PNG")
+
+    res = upload(
+        client,
+        bucket,
+        [
+            ("paper.docx", buf_docx.getvalue()),
+            ("receipt.png", buf_img.getvalue()),
+        ],
+    )
+    assert res.status_code == 201
+    body = res.json()
+    assert body["parsed"] == 2
+    assert body["failed"] == 0
+
+    docs = client.get("/api/documents").json()["items"]
+    formats = {d["source_format"] for d in docs}
+    assert "docx" in formats
+    assert "image" in formats
 
 
 def test_failed_files_are_kept_as_rows_so_you_can_see_them(client, bucket):

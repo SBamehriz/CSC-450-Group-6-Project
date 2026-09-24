@@ -92,6 +92,52 @@ def test_docx_parse_success():
     assert document.filename == "notes.docx"
 
 
+def test_docx_table_and_paragraph_extraction():
+    import io
+    import docx
+
+    doc = docx.Document()
+    doc.add_heading("Quarterly Results", level=1)
+    doc.add_paragraph("Summary of financial metrics for Q3 2026:")
+
+    table = doc.add_table(rows=3, cols=3)
+    headers = ["Metric", "Value", "Target"]
+    for col_idx, h in enumerate(headers):
+        table.cell(0, col_idx).text = h
+
+    row1 = ["Revenue", "$1.2M", "$1.0M"]
+    for col_idx, val in enumerate(row1):
+        table.cell(1, col_idx).text = val
+
+    row2 = ["EBITDA", "$400K", "$350K"]
+    for col_idx, val in enumerate(row2):
+        table.cell(2, col_idx).text = val
+
+    doc.add_paragraph("Final conclusions and next steps.")
+    buf = io.BytesIO()
+    doc.save(buf)
+
+    [document] = parse("financials.docx", buf.getvalue())
+    text = document.text
+
+    # Verify headings and paragraphs
+    assert "# Quarterly Results" in text
+    assert "Summary of financial metrics for Q3 2026:" in text
+    assert "Final conclusions and next steps." in text
+
+    # Verify markdown table structure
+    assert "| Metric | Value | Target |" in text
+    assert "| --- | --- | --- |" in text
+    assert "| Revenue | $1.2M | $1.0M |" in text
+    assert "| EBITDA | $400K | $350K |" in text
+
+    # Verify document order: heading -> intro -> table -> conclusion
+    intro_pos = text.find("Summary of financial metrics")
+    table_pos = text.find("| Metric | Value | Target |")
+    conclusion_pos = text.find("Final conclusions and next steps.")
+    assert intro_pos < table_pos < conclusion_pos
+
+
 def test_image_parse_with_ocr():
     import io
     from PIL import Image, ImageDraw
@@ -120,6 +166,33 @@ def test_scanned_pdf_ocr_success():
     [document] = parse("contract_scan.pdf", buf.getvalue())
     assert any(w in document.text for w in ("Scanned", "Contract", "Page"))
     assert document.filename == "contract_scan.pdf"
+
+
+def test_jpg_and_jpeg_parse_with_ocr():
+    import io
+    from PIL import Image, ImageDraw
+
+    # Test JPG
+    img_jpg = Image.new("RGB", (320, 100), color="white")
+    d1 = ImageDraw.Draw(img_jpg)
+    d1.text((10, 30), "Service Receipt JPG 2026", fill="black")
+    buf_jpg = io.BytesIO()
+    img_jpg.save(buf_jpg, format="JPEG")
+
+    [doc_jpg] = parse("receipt.jpg", buf_jpg.getvalue())
+    assert any(w in doc_jpg.text for w in ("Service", "Receipt", "2026"))
+    assert doc_jpg.filename == "receipt.jpg"
+
+    # Test JPEG
+    img_jpeg = Image.new("RGB", (320, 100), color="white")
+    d2 = ImageDraw.Draw(img_jpeg)
+    d2.text((10, 30), "Equipment Tag JPEG 2026", fill="black")
+    buf_jpeg = io.BytesIO()
+    img_jpeg.save(buf_jpeg, format="JPEG")
+
+    [doc_jpeg] = parse("equipment.jpeg", buf_jpeg.getvalue())
+    assert any(w in doc_jpeg.text for w in ("Equipment", "Tag", "2026"))
+    assert doc_jpeg.filename == "equipment.jpeg"
 
 
 def test_plain_text():
@@ -310,3 +383,19 @@ def test_gzip_round_trip_is_byte_identical():
     original = b"round trip me\n" * 50
     [document] = parse("x.txt.gz", gzip.compress(original))
     assert document.text == original.decode()
+
+
+def test_parse_with_extraction_metadata():
+    docx_bytes = (FIXTURES / "sample.docx").read_bytes()
+    [doc] = parse("sample.docx", docx_bytes)
+    assert doc.metadata["source_format"] == "docx"
+    assert doc.metadata["engine"] == "openxml"
+    assert doc.metadata["table_count"] == 1
+    assert doc.metadata["paragraph_count"] >= 5
+
+    pdf_bytes = (FIXTURES / "sample.pdf").read_bytes()
+    [pdf_doc] = parse("sample.pdf", pdf_bytes)
+    assert pdf_doc.metadata["source_format"] == "pdf"
+    assert pdf_doc.metadata["engine"] == "pypdf"
+    assert pdf_doc.metadata["page_count"] >= 1
+

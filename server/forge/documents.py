@@ -155,6 +155,14 @@ def _ingest_one(
     for piece in pieces:
         cleaned = clean(piece.text, encoding_suspect=suspect)
 
+        fmt = _stored_format(piece.filename)
+        if fmt == "other":
+            fmt = _stored_format(name)
+
+        doc_quality = dict(cleaned.quality)
+        if getattr(piece, "metadata", None):
+            doc_quality["extraction"] = piece.metadata
+
         # so we can name the duplicate
         twin = session.execute(
             select(Document).where(
@@ -168,12 +176,12 @@ def _ingest_one(
                 Document(
                     bucket_id=bucket_id,
                     filename=piece.filename,
-                    source_format=_stored_format(name),
+                    source_format=fmt,
                     source_note=source_note,
                     raw_uri=raw_uri,
                     status="failed",
                     error=message,
-                    quality=cleaned.quality,
+                    quality=doc_quality,
                 )
             )
             outcomes.append(UploadOutcome(filename=piece.filename, status="failed", error=message))
@@ -182,14 +190,14 @@ def _ingest_one(
         document = Document(
             bucket_id=bucket_id,
             filename=piece.filename,
-            source_format=_stored_format(name),
+            source_format=fmt,
             source_note=source_note,
             raw_uri=raw_uri,
             status="parsed",
             content_hash=cleaned.content_hash,
             char_count=cleaned.char_count,
             word_count=cleaned.word_count,
-            quality=cleaned.quality,
+            quality=doc_quality,
         )
         session.add(document)
         session.flush()  # need the id for the text path

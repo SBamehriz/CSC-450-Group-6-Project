@@ -40,6 +40,11 @@ def engine(data_dir: Path):
 @pytest.fixture()
 def db(engine) -> Iterator[Session]:
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM checkpoints"))
+        conn.execute(text("DELETE FROM runs"))
+        conn.execute(text("DELETE FROM models"))
+        conn.execute(text("DELETE FROM jobs"))
+        conn.execute(text("DELETE FROM datasets"))
         conn.execute(text("DELETE FROM documents"))
         conn.execute(text("DELETE FROM buckets"))
     maker = sessionmaker(bind=engine, expire_on_commit=False)
@@ -78,6 +83,128 @@ def make_document(db):
         db.add(doc)
         db.commit()
         return doc
+
+    return _make
+
+
+@pytest.fixture()
+def make_dataset(db):
+    def _make(name: str | None = None, bucket_id: uuid.UUID | None = None, status: str = "draft"):
+        from forge.models import Dataset
+
+        ds = Dataset(
+            name=name or f"dataset-{uuid.uuid4().hex[:8]}",
+            description="Test dataset",
+            bucket_id=bucket_id,
+            status=status,
+            doc_count=10,
+            char_count=5000,
+            token_count=1250,
+            config={"val_split": 0.1},
+        )
+        db.add(ds)
+        db.commit()
+        return ds
+
+    return _make
+
+
+@pytest.fixture()
+def make_job(db):
+    def _make(job_type: str = "tokenization", status: str = "pending"):
+        from forge.models import Job
+
+        job = Job(
+            job_type=job_type,
+            status=status,
+            payload={"task": "benchmark"},
+            progress={"step": 0},
+        )
+        db.add(job)
+        db.commit()
+        return job
+
+    return _make
+
+
+@pytest.fixture()
+def make_model(db):
+    def _make(name: str | None = None, preset: str = "nano"):
+        from forge.models import Model
+
+        model = Model(
+            name=name or f"model-{uuid.uuid4().hex[:8]}",
+            description="Test tiny LM",
+            preset=preset,
+            n_layer=4,
+            d_model=128,
+            n_head=4,
+            ctx_len=512,
+            vocab_size=16384,
+            dropout=0.0,
+            param_count=920000,
+            config={},
+        )
+        db.add(model)
+        db.commit()
+        return model
+
+    return _make
+
+
+@pytest.fixture()
+def make_run(db, make_model, make_dataset):
+    def _make(model_id: uuid.UUID | None = None, dataset_id: uuid.UUID | None = None, status: str = "pending"):
+        from forge.models import Run
+
+        if model_id is None:
+            model = make_model()
+            model_id = model.id
+
+        run = Run(
+            name=f"run-{uuid.uuid4().hex[:8]}",
+            model_id=model_id,
+            dataset_id=dataset_id,
+            status=status,
+            device="cpu",
+            batch_size=2,
+            learning_rate=0.001,
+            max_steps=500,
+            current_step=0,
+            loss=2.5,
+            metrics={"step_time_ms": 12.5},
+            hyperparams={"precision": "fp32"},
+        )
+        db.add(run)
+        db.commit()
+        return run
+
+    return _make
+
+
+@pytest.fixture()
+def make_checkpoint(db, make_run):
+    def _make(run_id: uuid.UUID | None = None, step: int = 100, is_best: bool = False):
+        from forge.models import Checkpoint
+
+        if run_id is None:
+            run = make_run()
+            run_id = run.id
+
+        ckpt = Checkpoint(
+            run_id=run_id,
+            step=step,
+            epoch=1,
+            loss=2.1,
+            val_loss=2.0,
+            uri=f"checkpoints/{run_id}/step_{step}.pt",
+            size_bytes=3680000,
+            is_best=is_best,
+            metrics={"val_loss": 2.0},
+        )
+        db.add(ckpt)
+        db.commit()
+        return ckpt
 
     return _make
 

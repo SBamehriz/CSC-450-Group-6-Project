@@ -37,7 +37,7 @@ This module can be used as both an **importable Python library** within the Forg
 | Format | Extension | Engine / Method |
 | :--- | :--- | :--- |
 | **Portable Document Format** | `.pdf` | Native text extraction (`pypdf`) with Docling RapidOCR fallback for scanned pages |
-| **Microsoft Word** | `.docx` | Docling (`DocumentConverter` -> Markdown) |
+| **Microsoft Word** | `.docx` | Native paragraph & table extraction (OpenXML) with Docling fallback -> Markdown |
 | **Images** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp` | Docling + RapidOCR (`DocumentConverter` -> Markdown) |
 | **Markdown** | `.md` | Native `utf-8-sig` decoding |
 | **Plain Text** | `.txt` | Native `utf-8-sig` decoding |
@@ -90,27 +90,41 @@ python -m forge.converter [OPTIONS] [FILES...]
 
 - `-i, --input-dir <DIR>`: Input directory containing source documents (default: `input_files`).
 - `-o, --output <FILE>`: Output path for the generated JSON file (default: `output.json`).
+- `--ocr`: Force OCR processing on scanned PDFs and raster images (PNG, JPG, JPEG).
+- `--metadata / --no-metadata`: Include structured extraction metadata (engine, page/table counts, dimensions) in records (default: enabled).
+- `--clean`: Run extracted text through Forge's cleaning and quality validation pipeline.
+- `--clean-mode {standard,none}`: Cleaning mode (default: `standard`).
+- `--bucket <NAME_OR_UUID>`: Target Forge bucket to directly upload and ingest converted files.
+- `--source-note <NOTE>`: Provenance note describing the source of uploaded documents.
 - `[FILES...]`: Optional space-separated list of specific files to convert.
 
 ### Examples
 
-#### 1. Batch Convert an Entire Directory
+#### 1. Batch Convert an Entire Directory with Cleaning
 
-Convert all supported documents in a folder (`./documents`) and export results to `./dataset.json`:
-
-```bash
-python -m forge.converter -i ./documents -o ./dataset.json
-```
-
-#### 2. Convert Specific Files
-
-Convert selected documents and save the resulting records to `output.json`:
+Convert all documents in a folder and run them through Forge's cleaning pipeline with quality metrics:
 
 ```bash
-python -m forge.converter report.pdf meeting_notes.docx -o output.json
+python -m forge.converter -i ./documents -o ./dataset.json --clean
 ```
 
-#### 3. Output Directly to Terminal (STDOUT)
+#### 2. Convert Scanned PDFs and Images with OCR
+
+Run OCR on scanned PDF contracts and JPG/PNG receipts:
+
+```bash
+python -m forge.converter contract_scan.pdf receipt.jpg --ocr -o ocr_results.json
+```
+
+#### 3. Convert and Upload Directly to a Bucket
+
+Convert documents and ingest them directly into a Forge training bucket:
+
+```bash
+python -m forge.converter -i ./documents --bucket corpus --source-note "Q3 internal docs"
+```
+
+#### 4. Output Directly to Terminal (STDOUT)
 
 Omit `-o` when passing files to print formatted JSON directly to standard output:
 
@@ -130,28 +144,55 @@ from forge.converter import (
     convert_file,
     convert_bytes,
     convert_to_parsed,
+    convert_to_cleaned,
     convert_directory,
+    convert_and_upload,
+    convert_directory_and_upload,
 )
+from forge.ocr import ocr_image, ocr_pdf, ocr_document, is_ocr_available
 
-# 1. Convert a single file from disk
+# 1. OCR on PNG, JPG, or JPEG images
+text_img = ocr_image("receipt.jpg")
+print(text_img)
+
+# 2. OCR on scanned PDFs
+text_pdf = ocr_pdf("scanned_contract.pdf")
+print(text_pdf)
+
+# 3. Unified document OCR dispatcher
+text_doc = ocr_document("scan.png")
+
+# 4. Convert a single file from disk
 record = convert_file("data/paper.pdf")
 print(record["filename"])  # "paper.pdf"
 print(record["text"])      # Extracted markdown string
 
-# 2. Convert in-memory bytes (e.g. from an HTTP file upload)
+# 2. Convert and run through Forge's cleaning pipeline
+cleaned = convert_to_cleaned("data/paper.pdf")
+print(cleaned.text)         # Cleaned markdown
+print(cleaned.content_hash) # SHA-256 content hash
+print(cleaned.quality)      # alpha_ratio, line_count, flags
+
+# 3. Convert with inline cleaning metadata
+record_cleaned = convert_file("data/paper.pdf", clean_text=True)
+# record_cleaned contains: 'filename', 'text', 'content_hash', 'char_count', 'word_count', 'quality'
+
+# 4. Convert in-memory bytes (e.g. from an HTTP file upload)
 raw_bytes = Path("notes.docx").read_bytes()
 markdown_text = convert_bytes("notes.docx", raw_bytes)
 
-# 3. Convert to a Forge Parsed dataclass
+# 5. Convert to a Forge Parsed dataclass
 parsed_doc = convert_to_parsed("data/article.md")
-# parsed_doc.filename == "article.md"
-# parsed_doc.text == "# Header..."
 
-# 4. Batch convert a folder of documents
+# 6. Convert and upload directly to a Forge bucket
+doc = convert_and_upload("data/paper.pdf", bucket="corpus", source_note="uploaded via API")
+print(f"Uploaded {doc.filename} -> {doc.status} (id: {doc.id})")
+
+# 7. Batch convert a folder of documents
 records = convert_directory(
     input_dir="./input_files",
     output_file="./output.json",
-    extensions=(".pdf", ".docx", ".txt", ".md"),
+    clean_text=True,
 )
 ```
 
@@ -176,21 +217,53 @@ Documents converted through this pipeline undergo Forge's downstream text cleani
 
 ## Output Schema
 
-The output generated by `converter.py` is a JSON array of record objects:
+The output generated by `converter.py` is a JSON array of record objects with structured extraction metadata:
 
 ```json
 [
   {
     "filename": "quarterly_review.pdf",
-    "text": "## Q3 Financial Summary\n\nRevenue grew by **18%** year-over-year across enterprise software offerings...\n\n| Category | Growth |\n| :--- | :--- |\n| Subscriptions | +22% |\n| Services | +11% |"
+    "text": "## Q3 Financial Summary\n\nRevenue grew by **18%** year-over-year across enterprise software offerings...\n\n| Category | Growth |\n| :--- | :--- |\n| Subscriptions | +22% |\n| Services | +11% |",
+    "metadata": {
+      "source_format": "pdf",
+      "engine": "pypdf",
+      "ocr_applied": false,
+      "page_count": 4,
+      "char_count": 1840,
+      "word_count": 290,
+      "line_count": 42
+    }
   },
   {
     "filename": "meeting_notes.docx",
-    "text": "## Team Standup - Sept 14\n\n- Completed Docling integration for dataset pipeline\n- Verified unit tests for batch converter\n- Next steps: benchmark GPU training presets"
+    "text": "## Team Standup - Sept 14\n\n- Completed Docling integration for dataset pipeline\n- Verified unit tests for batch converter\n- Next steps: benchmark GPU training presets",
+    "metadata": {
+      "source_format": "docx",
+      "engine": "openxml",
+      "ocr_applied": false,
+      "paragraph_count": 8,
+      "heading_count": 2,
+      "table_count": 1,
+      "char_count": 920,
+      "word_count": 145,
+      "line_count": 18
+    }
   },
   {
-    "filename": "guidelines.txt",
-    "text": "Document curation guidelines for language model fine-tuning..."
+    "filename": "invoice_scan.png",
+    "text": "ACME Supplies Inc.\nInvoice #88412\nTotal: $450.00",
+    "metadata": {
+      "source_format": "png",
+      "engine": "RapidOCR",
+      "ocr_applied": true,
+      "width": 640,
+      "height": 480,
+      "image_format": "PNG",
+      "image_mode": "RGB",
+      "char_count": 68,
+      "word_count": 8,
+      "line_count": 3
+    }
   }
 ]
 ```

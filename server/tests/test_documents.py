@@ -1,5 +1,6 @@
 import gzip
 import io
+import json
 import uuid
 from pathlib import Path
 
@@ -395,3 +396,36 @@ def test_gzipped_upload_is_stored_under_its_real_name(client, bucket):
     document = client.get("/api/documents").json()["items"][0]
     assert document["filename"] == "corpus.txt"
     assert document["status"] == "parsed"
+
+
+def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
+    dataset_records = [
+        {
+            "filename": "annual_report.pdf",
+            "text": "Extracted annual report markdown content long enough to clear flags. " * 8,
+        },
+        {
+            "filename": "meeting_notes.docx",
+            "text": "Extracted docx meeting notes content long enough to clear flags. " * 8,
+        },
+        {
+            "filename": "memo.txt",
+            "text": "Extracted memo text content long enough to clear flags. " * 8,
+        },
+    ]
+    raw_json = json.dumps(dataset_records).encode("utf-8")
+
+    res = upload(client, bucket, [("dataset.json", raw_json)], source_note="converted by docling")
+    assert res.status_code == 201
+    body = res.json()
+    assert body["parsed"] == 3
+    assert body["failed"] == 0
+
+    docs = client.get(f"/api/documents?bucket_id={bucket}").json()["items"]
+    by_filename = {d["filename"]: d for d in docs}
+    assert by_filename["annual_report.pdf"]["source_format"] == "pdf"
+    assert by_filename["meeting_notes.docx"]["source_format"] == "docx"
+    assert by_filename["memo.txt"]["source_format"] == "txt"
+    assert all(d["source_note"] == "converted by docling" for d in docs)
+    assert all(d["content_hash"] for d in docs)
+

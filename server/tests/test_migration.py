@@ -52,7 +52,7 @@ def test_migration_builds_the_same_columns_and_types(both_ways):
 
 def test_created_at_is_a_timestamp_and_required(both_ways):
     migrated, _, _, _ = both_ways
-    for table in ("buckets", "documents"):
+    for table in migrated:
         type_name, nullable = migrated[table]["created_at"]
         assert "DATETIME" in type_name.upper() or "TIMESTAMP" in type_name.upper()
         assert nullable is False

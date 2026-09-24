@@ -127,7 +127,7 @@ CSC-450-Group-6-Project/
 │   └── train_spike.py         # PyTorch GPU/CPU training speed & memory benchmarking
 ├── server/
 │   ├── alembic/               # Database migrations
-│   │   └── versions/          # Versioned schema migrations (0001_initial)
+│   │   └── versions/          # Versioned schema migrations (0001_initial, 0002_datasets_jobs_models_runs_checkpoints)
 │   ├── alembic.ini            # Alembic configuration
 │   ├── pyproject.toml         # Python dependencies and tool configs (ruff, pyright, pytest)
 │   ├── uv.lock                # Deterministic uv lockfile
@@ -136,12 +136,13 @@ CSC-450-Group-6-Project/
 │   │   ├── buckets.py         # Bucket management routes & stats subqueries
 │   │   ├── config.py          # Environment settings & storage path resolution
 │   │   ├── converter.py       # Docling document conversion utility (CLI & API)
-│   │   ├── db.py              # SQLAlchemy engine & SQLite WAL/pragmas
+│   │   ├── db.py              # SQLite engine with WAL mode & pragmas
 │   │   ├── documents.py       # Upload, pagination, text streaming, move & reject
 │   │   ├── errors.py          # Standardized error envelopes and handlers
 │   │   ├── ingest.py          # Parsing, cleaning, normalization, metric scoring
 │   │   ├── main.py            # FastAPI application factory & SPA static serving
-│   │   ├── models.py          # SQLAlchemy ORM models (Bucket, Document)
+│   │   ├── models.py          # SQLAlchemy ORM models (Bucket, Document, Dataset, Job, Model, Run, Checkpoint)
+│   │   ├── ocr.py             # OCR engine with RapidOCR fallback detection
 │   │   ├── schemas.py         # Pydantic schemas & request/response contracts
 │   │   ├── README.md          # Dedicated documentation for converter.py
 │   │   └── train/
@@ -290,8 +291,9 @@ uv run --project server python scripts/start.py --dev
 | **Plain Text** | `.txt`, `.txt.gz` | Native `utf-8` / `latin-1` | Transparent `.gz` unpacking |
 | **Markdown** | `.md`, `.md.gz` | Native `utf-8` / `latin-1` | Transparent `.gz` unpacking |
 | **HTML Articles** | `.html`, `.htm` | [Trafilatura](https://github.com/adbar/trafilatura) | Strips ads/navs, preserves article body and tables |
-| **PDF Documents** | `.pdf` | [Docling](https://github.com/docling-project/docling) / `pypdf` | Layout analysis, OCR fallback, table extraction |
-| **Word Documents**| `.docx` | [Docling](https://github.com/docling-project/docling) | Headings, lists, structured markdown export |
+| **PDF Documents** | `.pdf` | [Docling](https://github.com/docling-project/docling) / `pypdf` | Layout analysis, OCR fallback for scanned pages, table extraction |
+| **Word Documents**| `.docx` | Native OpenXML / [Docling](https://github.com/docling-project/docling) | Headings, lists, paragraph & table extraction, structured markdown export |
+| **Images (OCR)**  | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp`, `.webp` | RapidOCR / Docling / PyTesseract | Optical character recognition (OCR) and text extraction |
 | **JSONL Datasets**| `.jsonl`, `.jsonl.gz` | Native line streaming | Splits each `{"text": "..."}` into discrete documents |
 | **JSON Records**  | `.json` | Native JSON parser | Extracts single objects or lists of `{"text": "..."}` records |
 
@@ -467,6 +469,36 @@ The FastAPI backend exposes all core operations under the `/api` prefix. Interac
 | `POST` | `/api/documents/{id}/move` | `{"bucket_id": "..."}` | Move document to another bucket (with dedup checks) |
 | `POST` | `/api/documents/{id}/reject`| `{"reason": "..."}` | Mark document as rejected and clear content hash |
 | `DELETE`| `/api/documents/{id}`| — | Delete document and delete raw & cleaned files from disk |
+
+---
+
+## Database Architecture & Migrations
+
+Forge utilizes **SQLite** configured in Write-Ahead Logging (`WAL`) mode with foreign keys enabled and timezone-aware UTC timestamps (`UtcDateTime`). Schema evolutions are managed deterministically with **Alembic**.
+
+### Entity Schema
+
+| Table | Primary Key | Foreign Keys | Status Enums / Constraints | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **`buckets`** | UUID | — | `name` (unique) | Isolated project workspaces for grouping documents |
+| **`documents`** | UUID | `bucket_id` -> `buckets.id` (RESTRICT) | `status`: `pending`, `parsed`, `failed`, `rejected`<br>`source_format`: `txt`, `md`, `html`, `pdf`, `docx`, `image`, `jsonl`, `other`<br>`(bucket_id, content_hash)` unique | Raw & cleaned document records, quality flags, word/char counts |
+| **`datasets`** | UUID | `bucket_id` -> `buckets.id` (SET NULL) | `status`: `draft`, `processing`, `ready`, `failed`<br>`name` (unique) | Curated training/eval splits with token and character volume accounting |
+| **`jobs`** | UUID | — | `job_type`: `tokenization`, `training`, `eval`, `ingest`, `export`<br>`status`: `pending`, `running`, `completed`, `failed`, `cancelled` | Async background tasks with payload, telemetry, and progress tracking |
+| **`models`** | UUID | — | `preset`: `nano`, `micro`, `small`, `custom`<br>`name` (unique) | Transformer architectures, layer/head configs, and parameter counts |
+| **`runs`** | UUID | `model_id` -> `models.id` (RESTRICT)<br>`dataset_id` -> `datasets.id` (SET NULL) | `status`: `pending`, `running`, `completed`, `failed`, `stopped` | Training runs tracking hyperparameters, loss curves, and device metrics |
+| **`checkpoints`** | UUID | `run_id` -> `runs.id` (CASCADE) | `(run_id, step)` unique<br>`is_best` (indexed) | Saved model weights, optimizer states, and validation checkpoints |
+
+### Running Migrations
+
+```bash
+cd server
+uv run alembic upgrade head
+```
+
+To roll back migrations:
+```bash
+uv run alembic downgrade base
+```
 
 ---
 

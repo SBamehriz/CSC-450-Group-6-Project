@@ -128,7 +128,7 @@ export function Dropzone({
         </button>
       </p>
       <p className="muted dropzone-hint">
-        .txt .md .html .htm .pdf .json .jsonl .gz · Up to 50 MB per file, 200 files at a time
+        .txt .md .html .htm .pdf .docx .png .jpg .json .jsonl .gz · Up to 50 MB per file, 200 files at a time
       </p>
       <input
         ref={inputRef}
@@ -137,6 +137,7 @@ export function Dropzone({
         hidden
         disabled={busy}
         aria-label="Files to upload"
+        accept=".txt,.md,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp,.json,.jsonl,.gz"
         onChange={(event) => {
           send(event.target.files);
           event.target.value = '';

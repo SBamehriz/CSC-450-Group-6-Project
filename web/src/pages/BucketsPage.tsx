@@ -15,8 +15,9 @@ export default function BucketsPage() {
       <div>
         <h1 className="h1">Buckets</h1>
         <p className="lede">
-          Use buckets to group documents by source. This keeps the data organized and makes later
-          testing easier.
+          A bucket is one corpus. Name it after where the text came from, not what you hope it
+          teaches the model. Per-bucket validation only means something if the bucket is a real
+          source.
         </p>
       </div>
 
@@ -59,7 +60,7 @@ function NewBucketForm({ onCreated }: { onCreated: () => void }) {
           label="Name"
           value={name}
           onChange={setName}
-          placeholder="gutenberg fiction"
+          placeholder="gutenberg-fiction"
           maxLength={64}
           width={230}
         />
@@ -68,7 +69,7 @@ function NewBucketForm({ onCreated }: { onCreated: () => void }) {
             label="Where it came from"
             value={description}
             onChange={setDescription}
-            placeholder="Project Gutenberg, public domain, downloaded August 2026"
+            placeholder="Project Gutenberg, public domain, downloaded Aug 2026"
             maxLength={2000}
           />
         </div>
@@ -77,7 +78,7 @@ function NewBucketForm({ onCreated }: { onCreated: () => void }) {
           className="btn btn-primary"
           disabled={!name.trim() || create.isPending}
         >
-          {create.isPending ? 'Creating.' : 'Create bucket'}
+          {create.isPending ? 'Creating…' : 'Create bucket'}
         </button>
       </form>
       {create.error ? (
@@ -108,7 +109,7 @@ function BucketTable({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['buckets'] }),
   });
 
-  if (isPending) return <p className="muted">Loading buckets.</p>;
+  if (isPending) return <p className="muted">Loading buckets…</p>;
 
   if (error) {
     const hint = error instanceof ApiError && error.status === 401 ? ' Check the API token.' : '';
@@ -116,7 +117,7 @@ function BucketTable({
   }
 
   if (buckets.length === 0) {
-    return <Empty title="No buckets yet" hint="Create one above, then open it to upload files." />;
+    return <Empty title="No buckets yet" hint="Make one above, then open it to upload files." />;
   }
 
   const estimatedTokens = buckets.reduce((sum, bucket) => sum + bucket.stats.est_tokens, 0);
@@ -172,7 +173,7 @@ function BucketTable({
                       disabled={remove.isPending && remove.variables === bucket.id}
                       onClick={() => remove.mutate(bucket.id)}
                     >
-                      {remove.isPending && remove.variables === bucket.id ? 'Deleting.' : 'Delete'}
+                      {remove.isPending && remove.variables === bucket.id ? 'Deleting…' : 'Delete'}
                     </button>
                   )}
                 </td>

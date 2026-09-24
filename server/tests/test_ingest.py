@@ -34,7 +34,7 @@ def golden(name: str, produced: str) -> None:
     expected = FIXTURES / f"{name}.expected.txt"
     if not expected.exists():
         expected.write_text(produced, encoding="utf-8")
-        pytest.skip(f"wrote a new snapshot {expected.name} — check it and re-run")
+        pytest.skip(f"wrote a new snapshot {expected.name}, check it and re-run")
     assert produced == expected.read_text(encoding="utf-8")
 
 

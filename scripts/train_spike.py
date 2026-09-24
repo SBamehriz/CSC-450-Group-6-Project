@@ -146,7 +146,7 @@ def run_one(args, preset_name: str, text: str) -> dict:
 
         loss_value = loss.item()
         if not math.isfinite(loss_value):
-            raise SystemExit(f"loss went to {loss_value} at step {step} — that's a bug, not a speed")
+            raise SystemExit(f"loss went to {loss_value} at step {step}. That's a bug, not a speed")
 
         losses.append(loss_value)
         history.append({"step": step, "loss": round(loss_value, 4)})
@@ -158,7 +158,7 @@ def run_one(args, preset_name: str, text: str) -> dict:
             print(f"    step {step:>4}/{args.steps}  loss {loss_value:.4f}  {elapsed * 1000:.0f} ms")
 
     if not step_times:
-        raise SystemExit("every step was warmup — use --steps larger than --warmup-steps")
+        raise SystemExit("every step was warmup. Use --steps larger than --warmup-steps")
 
     tokens_per_step = args.batch_size * config.ctx_len
     median_step = statistics.median(step_times)

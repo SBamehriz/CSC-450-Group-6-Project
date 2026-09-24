@@ -1,7 +1,7 @@
 [project]
 name = "forge"
 version = "0.1.0"
-description = "Forge — tiny-LM data lab"
+description = "Forge, a tiny-LM data lab"
 requires-python = ">=3.11"
 
 dependencies = [

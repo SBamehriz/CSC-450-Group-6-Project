@@ -92,7 +92,7 @@ class UploadResult(BaseModel):
 
 
 class DocumentText(BaseModel):
-    """A window into the cleaned text — never the whole 50MB document."""
+    """A window into the cleaned text, never the whole 50MB document."""
 
     text: str
     offset: int

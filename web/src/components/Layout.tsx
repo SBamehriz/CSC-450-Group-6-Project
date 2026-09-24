@@ -21,6 +21,9 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <header className="topbar">
         <nav className="nav" aria-label="Main navigation">
           {LINKS.map((link) => (
@@ -37,11 +40,13 @@ export default function Layout({ children }: { children: ReactNode }) {
         <div className="topbar-end">
           <span className={`system-status system-status-${state}`} role="status">
             <span className="dot" aria-hidden="true" />
-            {health.isPending ? 'Checking.' : databaseUp ? 'System OK' : 'System unavailable'}
+            {health.isPending ? 'Checking…' : databaseUp ? 'System OK' : 'System unavailable'}
           </span>
         </div>
       </header>
-      <main className="page">{children}</main>
+      <main className="page" id="main-content" tabIndex={-1}>
+        {children}
+      </main>
     </>
   );
 }

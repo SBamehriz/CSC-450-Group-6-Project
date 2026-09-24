@@ -21,7 +21,6 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  // FormData sets its own content-type
   const isJson = init.body !== undefined && !(init.body instanceof FormData);
   const response = await fetch(`${API_PREFIX}${path}`, {
     ...init,
@@ -49,9 +48,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+async function allPages<T>(path: string): Promise<Omit<BucketPage, 'items'> & { items: T[] }> {
+  const items: T[] = [];
+  let page: Omit<BucketPage, 'items'> & { items: T[] };
+
+  do {
+    page = await request<typeof page>(
+      `${path}${path.includes('?') ? '&' : '?'}limit=200&offset=${items.length}`,
+    );
+    items.push(...page.items);
+  } while (items.length < page.total && page.items.length > 0);
+
+  return { items, total: items.length };
+}
+
 export const api = {
   health: () => request<Health>('/health'),
-  listBuckets: () => request<BucketPage>('/buckets'),
+  listBuckets: () => allPages<Bucket>('/buckets'),
   getBucket: (id: string) => request<Bucket>(`/buckets/${id}`),
   createBucket: (name: string, description: string) =>
     request<Bucket>('/buckets', {
@@ -70,7 +83,10 @@ export const api = {
     });
   },
   listDocuments: (params: { bucketId: string; status?: string; q?: string; flagged?: boolean }) => {
-    const query = new URLSearchParams({ bucket_id: params.bucketId, limit: '200' });
+    const query = new URLSearchParams({
+      bucket_id: params.bucketId,
+      limit: '200',
+    });
     if (params.status) query.set('status', params.status);
     if (params.q) query.set('q', params.q);
     if (params.flagged) query.set('flagged', 'true');

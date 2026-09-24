@@ -73,7 +73,7 @@ def parse_html(raw: bytes) -> str:
     text = (text or "").strip()
     if len(text) < MIN_HTML_CHARS:
         raise ParseError(
-            f"No article content found in this HTML — only {len(text)} characters "
+            f"No article content found in this HTML. Only {len(text)} characters "
             "came out. It may be a nav page, a redirect, or rendered entirely by "
             "JavaScript."
         )
@@ -146,7 +146,7 @@ def parse_jsonl(raw: bytes, filename: str) -> list[Parsed]:
 
     if not documents:
         detail = "; ".join(problems[:3]) if problems else "it is empty"
-        raise ParseError(f"No usable lines in this JSONL file — {detail}.")
+        raise ParseError(f"No usable lines in this JSONL file, {detail}.")
     return documents
 
 
@@ -178,7 +178,7 @@ def parse_json(raw: bytes, filename: str) -> list[Parsed]:
 
     if not documents:
         detail = "; ".join(problems[:3]) if problems else "it is empty"
-        raise ParseError(f"No usable records in this JSON file — {detail}.")
+        raise ParseError(f"No usable records in this JSON file, {detail}.")
     return documents
 
 

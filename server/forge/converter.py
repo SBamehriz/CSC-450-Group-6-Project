@@ -9,7 +9,7 @@ from pathlib import Path
 # Suppress harmless Windows symlink warning from huggingface_hub
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
-from forge.ingest import Parsed, ParseError
+from forge.ingest import Parsed
 
 _converter = None
 SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")

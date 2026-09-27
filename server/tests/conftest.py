@@ -154,7 +154,11 @@ def make_model(db):
 
 @pytest.fixture()
 def make_run(db, make_model, make_dataset):
-    def _make(model_id: uuid.UUID | None = None, dataset_id: uuid.UUID | None = None, status: str = "pending"):
+    def _make(
+        model_id: uuid.UUID | None = None,
+        dataset_id: uuid.UUID | None = None,
+        status: str = "pending",
+    ):
         from forge.models import Run
 
         if model_id is None:

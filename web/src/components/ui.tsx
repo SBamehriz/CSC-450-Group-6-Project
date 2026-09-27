@@ -128,7 +128,8 @@ export function Dropzone({
         </button>
       </p>
       <p className="muted dropzone-hint">
-        .txt .md .html .htm .pdf .docx .png .jpg .json .jsonl .gz · Up to 50 MB per file, 200 files at a time
+        .txt .md .html .htm .pdf .docx .png .jpg .json .jsonl .gz · Up to 50 MB per file, 200 files
+        at a time
       </p>
       <input
         ref={inputRef}

@@ -6,15 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from forge.models import (
-    DATASET_STATUSES,
-    JOB_STATUSES,
-    JOB_TYPES,
-    RUN_STATUSES,
     Bucket,
     Checkpoint,
     Dataset,
     Job,
-    Model,
     Run,
 )
 
@@ -177,7 +172,5 @@ def test_checkpoint_uniqueness_and_cascade_delete(db, make_run, make_checkpoint)
     db.delete(run_to_delete)
     db.commit()
 
-    ckpts_left = db.execute(
-        select(Checkpoint).where(Checkpoint.run_id == run.id)
-    ).scalars().all()
+    ckpts_left = db.execute(select(Checkpoint).where(Checkpoint.run_id == run.id)).scalars().all()
     assert len(ckpts_left) == 0

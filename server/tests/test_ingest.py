@@ -15,12 +15,16 @@ from forge.ingest import (
     parse,
     split_extension,
 )
+from forge.ocr import is_ocr_available
 from tests.conftest import ARTICLE_PDF, NOTES_MD, SCANNED_PDF
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 GENERATED = {"article.pdf": ARTICLE_PDF, "scanned.pdf": SCANNED_PDF, "notes.md": NOTES_MD}
+requires_ocr = pytest.mark.skipif(
+    not is_ocr_available(), reason="Install the ocr extra to test OCR"
+)
 
 
 def read(name: str) -> bytes:
@@ -78,6 +82,7 @@ def test_uploading_corrupted_docx_fails():
 
 def test_docx_parse_success():
     import io
+
     import docx
 
     doc = docx.Document()
@@ -94,6 +99,7 @@ def test_docx_parse_success():
 
 def test_docx_table_and_paragraph_extraction():
     import io
+
     import docx
 
     doc = docx.Document()
@@ -138,8 +144,10 @@ def test_docx_table_and_paragraph_extraction():
     assert intro_pos < table_pos < conclusion_pos
 
 
+@requires_ocr
 def test_image_parse_with_ocr():
     import io
+
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (320, 100), color="white")
@@ -153,8 +161,10 @@ def test_image_parse_with_ocr():
     assert document.filename == "invoice.png"
 
 
+@requires_ocr
 def test_scanned_pdf_ocr_success():
     import io
+
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (320, 100), color="white")
@@ -168,8 +178,10 @@ def test_scanned_pdf_ocr_success():
     assert document.filename == "contract_scan.pdf"
 
 
+@requires_ocr
 def test_jpg_and_jpeg_parse_with_ocr():
     import io
+
     from PIL import Image, ImageDraw
 
     # Test JPG
@@ -398,4 +410,3 @@ def test_parse_with_extraction_metadata():
     assert pdf_doc.metadata["source_format"] == "pdf"
     assert pdf_doc.metadata["engine"] == "pypdf"
     assert pdf_doc.metadata["page_count"] >= 1
-

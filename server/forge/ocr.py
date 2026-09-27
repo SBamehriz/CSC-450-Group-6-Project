@@ -1,7 +1,9 @@
 import io
 import os
+import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -10,9 +12,9 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 SUPPORTED_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")
 
-_docling_converter = None
-_rapidocr = None
-_pytesseract = None
+_docling_converter: Any = None
+_rapidocr: Any = None
+_pytesseract: Any = None
 
 
 def _get_docling_converter():
@@ -50,6 +52,9 @@ def _get_pytesseract():
     """Lazily load pytesseract if installed."""
     global _pytesseract
     if _pytesseract is None:
+        if shutil.which("tesseract") is None:
+            _pytesseract = False
+            return None
         try:
             import pytesseract
 

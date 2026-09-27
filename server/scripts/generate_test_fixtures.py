@@ -1,8 +1,11 @@
 """Generate test fixtures for docx, images, and pdfs using standard library only."""
+
+# ruff: noqa: E501
+
 import io
 import struct
-import zlib
 import zipfile
+import zlib
 from pathlib import Path
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
@@ -16,44 +19,44 @@ def create_sample_docx(out_path: Path):
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="xml" ContentType="application/xml"/>'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-        '</Types>'
+        "</Types>"
     )
     rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
-        '</Relationships>'
+        "</Relationships>"
     )
     doc_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:body>'
+        "<w:body>"
         '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Forge Architecture Overview</w:t></w:r></w:p>'
-        '<w:p><w:r><w:t>Forge is a data lab and pre-training workbench designed for tiny Language Models.</w:t></w:r></w:p>'
+        "<w:p><w:r><w:t>Forge is a data lab and pre-training workbench designed for tiny Language Models.</w:t></w:r></w:p>"
         '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Core Components</w:t></w:r></w:p>'
         '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Document conversion and layout analysis</w:t></w:r></w:p>'
         '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Heuristic text cleaning and quality scoring</w:t></w:r></w:p>'
         '<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Benchmark Results</w:t></w:r></w:p>'
-        '<w:tbl>'
-        '<w:tr>'
-        '<w:tc><w:p><w:r><w:t>Component</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>Throughput</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>Status</w:t></w:r></w:p></w:tc>'
-        '</w:tr>'
-        '<w:tr>'
-        '<w:tc><w:p><w:r><w:t>DOCX Parser</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>120 docs/s</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>Optimal</w:t></w:r></w:p></w:tc>'
-        '</w:tr>'
-        '<w:tr>'
-        '<w:tc><w:p><w:r><w:t>OCR Engine</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>45 pages/s</w:t></w:r></w:p></w:tc>'
-        '<w:tc><w:p><w:r><w:t>Active</w:t></w:r></w:p></w:tc>'
-        '</w:tr>'
-        '</w:tbl>'
-        '<w:p><w:r><w:t>All pipeline stages operate in streaming fashion.</w:t></w:r></w:p>'
-        '</w:body>'
-        '</w:document>'
+        "<w:tbl>"
+        "<w:tr>"
+        "<w:tc><w:p><w:r><w:t>Component</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>Throughput</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>Status</w:t></w:r></w:p></w:tc>"
+        "</w:tr>"
+        "<w:tr>"
+        "<w:tc><w:p><w:r><w:t>DOCX Parser</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>120 docs/s</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>Optimal</w:t></w:r></w:p></w:tc>"
+        "</w:tr>"
+        "<w:tr>"
+        "<w:tc><w:p><w:r><w:t>OCR Engine</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>45 pages/s</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>Active</w:t></w:r></w:p></w:tc>"
+        "</w:tr>"
+        "</w:tbl>"
+        "<w:p><w:r><w:t>All pipeline stages operate in streaming fashion.</w:t></w:r></w:p>"
+        "</w:body>"
+        "</w:document>"
     )
 
     buf = io.BytesIO()
@@ -97,17 +100,146 @@ def create_sample_png(out_path: Path):
 
 def create_sample_jpg(out_path: Path):
     # Minimal 1x1 valid JFIF JPEG
-    jpg_bytes = bytes([
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
-        0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00,
-        0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0xFF, 0xDA, 0x00, 0x08, 0x01,
-        0x01, 0x00, 0x00, 0x3F, 0x00, 0x37, 0xFF, 0xD9
-    ])
+    jpg_bytes = bytes(
+        [
+            0xFF,
+            0xD8,
+            0xFF,
+            0xE0,
+            0x00,
+            0x10,
+            0x4A,
+            0x46,
+            0x49,
+            0x46,
+            0x00,
+            0x01,
+            0x01,
+            0x01,
+            0x00,
+            0x48,
+            0x00,
+            0x48,
+            0x00,
+            0x00,
+            0xFF,
+            0xDB,
+            0x00,
+            0x43,
+            0x00,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xC0,
+            0x00,
+            0x0B,
+            0x08,
+            0x00,
+            0x01,
+            0x00,
+            0x01,
+            0x01,
+            0x01,
+            0x11,
+            0x00,
+            0xFF,
+            0xC4,
+            0x00,
+            0x14,
+            0x00,
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x09,
+            0xFF,
+            0xDA,
+            0x00,
+            0x08,
+            0x01,
+            0x01,
+            0x00,
+            0x00,
+            0x3F,
+            0x00,
+            0x37,
+            0xFF,
+            0xD9,
+        ]
+    )
     out_path.write_bytes(jpg_bytes)
     print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
 
@@ -142,12 +274,15 @@ def _make_pdf(lines: list[str]) -> bytes:
 
 
 def create_sample_pdf(out_path: Path):
-    pdf_bytes = _make_pdf([
-        "Forge Document Ingestion and Conversion Fixture",
-        "This is page one of the sample PDF document with structured text.",
-        "The extractor should parse all sentences with proper spacing and density.",
-        "Multiple paragraphs verify layout analysis and char count calculations.",
-    ] * 3)
+    pdf_bytes = _make_pdf(
+        [
+            "Forge Document Ingestion and Conversion Fixture",
+            "This is page one of the sample PDF document with structured text.",
+            "The extractor should parse all sentences with proper spacing and density.",
+            "Multiple paragraphs verify layout analysis and char count calculations.",
+        ]
+        * 3
+    )
     out_path.write_bytes(pdf_bytes)
     print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
 

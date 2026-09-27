@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from forge import documents as documents_router
+from forge.ocr import is_ocr_available
 from tests.conftest import ARTICLE_PDF, NOTES_MD, SCANNED_PDF
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -102,7 +103,7 @@ def test_one_bad_file_does_not_spoil_the_batch(client, bucket):
     by_name = {o["filename"]: o for o in body["outcomes"]}
     assert "scanned" in by_name["scanned.pdf"]["error"].lower()
     assert "OCR" in by_name["scanned.pdf"]["error"]
-    assert ".docx" in by_name["thesis.docx"]["error"]
+    assert "docx" in by_name["thesis.docx"]["error"].lower()
 
 
 def test_an_unreadable_file_records_what_it_actually_was(client, bucket):
@@ -119,13 +120,17 @@ def test_an_unsupported_file_records_as_other(client, bucket):
     assert document["status"] == "failed"
 
 
+@pytest.mark.skipif(not is_ocr_available(), reason="Install the ocr extra to test OCR")
 def test_upload_valid_docx_and_image(client, bucket):
     import io
+
     import docx
     from PIL import Image, ImageDraw
 
     doc = docx.Document()
-    doc.add_paragraph("A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5)
+    doc.add_paragraph(
+        "A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5
+    )
     buf_docx = io.BytesIO()
     doc.save(buf_docx)
 
@@ -152,6 +157,20 @@ def test_upload_valid_docx_and_image(client, bucket):
     formats = {d["source_format"] for d in docs}
     assert "docx" in formats
     assert "image" in formats
+
+
+def test_tif_picker_format_reaches_image_ingestion(client, bucket, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Scanned TIFF text. " * 40)
+    picture = Image.new("RGB", (40, 40), color="white")
+    buffer = io.BytesIO()
+    picture.save(buffer, format="TIFF")
+    response = upload(client, bucket, [("scan.tif", buffer.getvalue())])
+    assert response.status_code == 201 and response.json()["parsed"] == 1
+    document = client.get("/api/documents").json()["items"][0]
+    assert document["source_format"] == "image"
+    assert document["filename"] == "scan.tif"
 
 
 def test_failed_files_are_kept_as_rows_so_you_can_see_them(client, bucket):
@@ -428,4 +447,3 @@ def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
     assert by_filename["memo.txt"]["source_format"] == "txt"
     assert all(d["source_note"] == "converted by docling" for d in docs)
     assert all(d["content_hash"] for d in docs)
-

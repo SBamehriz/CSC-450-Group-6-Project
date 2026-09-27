@@ -1,6 +1,6 @@
 # Forge Document Converter (`converter.py`)
 
-A document conversion and ingestion utility for **Forge**, built to extract structured, high-fidelity Markdown text from PDF, Word, and text documents using [Docling](https://github.com/docling-project/docling).
+The Forge converter reads local files or adds them to a bucket. Text layer PDFs use `pypdf`, and DOCX files use native OpenXML parsing. Docling and OCR are optional for files that need them.
 
 This module can be used as both an **importable Python library** within the Forge backend ingestion pipeline and a **standalone CLI tool** for batch dataset preparation.
 
@@ -16,19 +16,18 @@ This module can be used as both an **importable Python library** within the Forg
 - [Forge Ingestion Pipeline Integration](#forge-ingestion-pipeline-integration)
 - [Output Schema](#output-schema)
 - [Running Tests](#running-tests)
-- [Git Commit & Push Guide](#git-commit--push-guide)
 
 ---
 
 ## Features
 
 - **Multi-Format Extraction**: Parses `.pdf`, `.docx`, images (`.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp`), `.txt`, and `.md` files cleanly into Markdown text records.
-- **Powered by Docling & RapidOCR**: Leverages Docling's advanced document layout analysis, table recognition, and OCR capabilities to preserve document structure and extract text from scanned PDFs and raster images.
+- **Optional OCR**: RapidOCR or Docling can read image text and scanned PDFs. Tesseract also works when the executable and Python package are installed.
 - **Lazy Singleton Loading**: Heavy Docling models and dependencies are loaded lazily on demand (`get_converter()`), avoiding startup penalty for server routes or tasks that do not perform document conversions.
 - **In-Memory & File-Based Ingestion**: Supports converting from filesystem paths (`convert_file`), directory trees (`convert_directory`), or raw byte streams (`convert_bytes` with automatic tempfile management).
 - **Graceful Error Recovery**: Batch operations log and skip problematic files without aborting the entire pipeline.
 - **Robust Encoding Support**: Handles standard UTF-8 as well as UTF-8 with BOM (`utf-8-sig`) transparently for plain text and Markdown files.
-- **Direct Forge Pipeline Compatibility**: Generates `Parsed` dataclass objects compatible with Forge's document storage, cleaning, deduplication, and training buckets.
+- **Bucket Uploads**: Cleans and stores converted files in an existing Forge bucket.
 
 ---
 
@@ -36,9 +35,9 @@ This module can be used as both an **importable Python library** within the Forg
 
 | Format | Extension | Engine / Method |
 | :--- | :--- | :--- |
-| **Portable Document Format** | `.pdf` | Native text extraction (`pypdf`) with Docling RapidOCR fallback for scanned pages |
-| **Microsoft Word** | `.docx` | Native paragraph & table extraction (OpenXML) with Docling fallback -> Markdown |
-| **Images** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp` | Docling + RapidOCR (`DocumentConverter` -> Markdown) |
+| **Portable Document Format** | `.pdf` | `pypdf` text layer. Scans need optional OCR or Docling. |
+| **Microsoft Word** | `.docx` | Native OpenXML paragraphs and tables. Docling is an optional fallback. |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp` | Pillow reads metadata. Text needs an optional OCR engine. |
 | **Markdown** | `.md` | Native `utf-8-sig` decoding |
 | **Plain Text** | `.txt` | Native `utf-8-sig` decoding |
 
@@ -46,7 +45,7 @@ This module can be used as both an **importable Python library** within the Forg
 
 ## Installation & Setup
 
-Document conversion requires the optional `converter` extra (`docling>=2.126.0`).
+The base installation includes Pillow, native DOCX parsing, and `pypdf`. For image text or scans, install an OCR option. Tests that need `python-docx` use the dev dependencies.
 
 ### 1. Using `uv` (Recommended)
 
@@ -54,12 +53,15 @@ From the `server/` directory:
 
 ```bash
 cd server
+uv sync --frozen
+uv sync --extra ocr
+# Or install Docling instead
 uv sync --extra converter
 ```
 
 ### 2. Using standard `pip`
 
-Install the server package in editable mode with the converter extra:
+For Docling, install the server package with its converter extra:
 
 ```bash
 cd server
@@ -72,7 +74,7 @@ Or install `docling` directly:
 pip install "docling>=2.126.0"
 ```
 
-> **Note on First Run**: Docling and RapidOCR models download automatically on the first conversion (approx. 300–400 MB) and are cached locally for fast execution on subsequent runs.
+OCR models may download on first use. Downloads and accuracy depend on the chosen engine and your files.
 
 ---
 
@@ -90,7 +92,7 @@ python -m forge.converter [OPTIONS] [FILES...]
 
 - `-i, --input-dir <DIR>`: Input directory containing source documents (default: `input_files`).
 - `-o, --output <FILE>`: Output path for the generated JSON file (default: `output.json`).
-- `--ocr`: Force OCR processing on scanned PDFs and raster images (PNG, JPG, JPEG).
+- `--ocr`: Force the optional OCR path for PDFs. Images always need OCR for text.
 - `--metadata / --no-metadata`: Include structured extraction metadata (engine, page/table counts, dimensions) in records (default: enabled).
 - `--clean`: Run extracted text through Forge's cleaning and quality validation pipeline.
 - `--clean-mode {standard,none}`: Cleaning mode (default: `standard`).
@@ -118,7 +120,7 @@ python -m forge.converter contract_scan.pdf receipt.jpg --ocr -o ocr_results.jso
 
 #### 3. Convert and Upload Directly to a Bucket
 
-Convert documents and ingest them directly into a Forge training bucket:
+Convert documents and add them to an existing Forge bucket:
 
 ```bash
 python -m forge.converter -i ./documents --bucket corpus --source-note "Q3 internal docs"
@@ -156,7 +158,7 @@ text_img = ocr_image("receipt.jpg")
 print(text_img)
 
 # 2. OCR on scanned PDFs
-text_pdf = ocr_pdf("scanned_contract.pdf")
+text_pdf = ocr_pdf(Path("scanned_contract.pdf").read_bytes())
 print(text_pdf)
 
 # 3. Unified document OCR dispatcher
@@ -165,13 +167,13 @@ text_doc = ocr_document("scan.png")
 # 4. Convert a single file from disk
 record = convert_file("data/paper.pdf")
 print(record["filename"])  # "paper.pdf"
-print(record["text"])      # Extracted markdown string
+print(record["text"])  # Extracted markdown string
 
 # 2. Convert and run through Forge's cleaning pipeline
 cleaned = convert_to_cleaned("data/paper.pdf")
-print(cleaned.text)         # Cleaned markdown
-print(cleaned.content_hash) # SHA-256 content hash
-print(cleaned.quality)      # alpha_ratio, line_count, flags
+print(cleaned.text)  # Cleaned markdown
+print(cleaned.content_hash)  # SHA-256 content hash
+print(cleaned.quality)  # alpha_ratio, line_count, flags
 
 # 3. Convert with inline cleaning metadata
 record_cleaned = convert_file("data/paper.pdf", clean_text=True)
@@ -211,7 +213,7 @@ for doc in docs:
     print(f"Ingested {doc.filename} ({len(doc.text)} characters)")
 ```
 
-Documents converted through this pipeline undergo Forge's downstream text cleaning, quality scoring, alpha-ratio verification, deduplication, and tokenization for language model training.
+Documents added to a bucket are cleaned, scored, and deduplicated. Tokenization and model training are not part of this converter.
 
 ---
 
@@ -286,24 +288,4 @@ To run with verbose output:
 ```bash
 cd server
 uv run pytest tests/test_converter.py -v
-```
-
----
-
-## Git Commit & Push Guide
-
-To commit this README and push it to GitHub:
-
-```bash
-# 1. Check current repository status
-git status
-
-# 2. Stage the new README file
-git add server/forge/README.md
-
-# 3. Commit the file with a clear message
-git commit -m "docs: add comprehensive README for converter.py module"
-
-# 4. Push changes to GitHub
-git push origin main
 ```

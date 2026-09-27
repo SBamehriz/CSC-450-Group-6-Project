@@ -166,9 +166,7 @@ class Model(Base):
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = _created_at()
 
-    __table_args__ = (
-        Index("ix_models_preset", "preset"),
-    )
+    __table_args__ = (Index("ix_models_preset", "preset"),)
 
 
 class Run(Base):
@@ -228,4 +226,3 @@ class Checkpoint(Base):
         Index("ix_checkpoints_run_id", "run_id"),
         Index("ix_checkpoints_is_best", "is_best"),
     )
-

@@ -1,8 +1,8 @@
+# ruff: noqa: F401
 import argparse
 import json
 import os
 import sys
-import tempfile
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -281,7 +281,7 @@ def _resolve_bucket_id(session: Session, bucket: uuid.UUID | str) -> uuid.UUID:
 
         matched = session.execute(select(Bucket).where(Bucket.name == bucket)).scalar_one_or_none()
         if matched is None:
-            raise ValueError(f"No bucket found matching name or UUID: {bucket!r}")
+            raise ValueError(f"No bucket found matching name or UUID: {bucket!r}") from None
         return matched.id
 
 
@@ -387,11 +387,9 @@ def convert_and_upload(
         session.flush()
         return doc
 
-    from forge.db import _SessionLocal, get_engine
+    from forge.db import get_engine
 
-    get_engine()
-    assert _SessionLocal is not None
-    with _SessionLocal() as s:
+    with Session(get_engine()) as s:
         doc = _execute(s)
         s.commit()
         return doc
@@ -443,11 +441,9 @@ def convert_directory_and_upload(
         session.flush()
         return docs
 
-    from forge.db import _SessionLocal, get_engine
+    from forge.db import get_engine
 
-    get_engine()
-    assert _SessionLocal is not None
-    with _SessionLocal() as s:
+    with Session(get_engine()) as s:
         docs = _execute_batch(s)
         s.commit()
         return docs
@@ -571,4 +567,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

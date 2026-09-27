@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 T = TypeVar("T")
 
@@ -121,11 +121,26 @@ class Health(BaseModel):
 class DatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
-    bucket_id: uuid.UUID | None = None
-    config: dict = Field(default_factory=dict)
+    bucket_id: uuid.UUID
+    validation_fraction: float = Field(default=0.1, gt=0, le=0.5)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+
+    @field_validator("name", "description")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("name")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value:
+            raise ValueError("cannot be blank")
+        return value
 
 
 class DatasetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     name: str
     description: str
@@ -230,4 +245,3 @@ class CheckpointOut(BaseModel):
     is_best: bool
     metrics: dict
     created_at: datetime
-

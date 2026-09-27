@@ -1,5 +1,7 @@
 import io
 import json
+import os
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -32,6 +34,9 @@ from forge.ocr import (
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DESKTOP_INPUTS = Path(r"C:\Users\PSK\Desktop\pdf-docx-to-json\input_files")
+requires_ocr = pytest.mark.skipif(
+    not is_ocr_available(), reason="Install the ocr extra to test OCR"
+)
 
 
 def test_convert_file_plain_text(tmp_path: Path):
@@ -137,6 +142,7 @@ def test_parse_with_converter_txt():
     assert docs[0].filename == "sample.txt"
 
 
+@requires_ocr
 def test_convert_image_file_with_ocr(tmp_path: Path):
     from PIL import Image, ImageDraw
 
@@ -151,8 +157,10 @@ def test_convert_image_file_with_ocr(tmp_path: Path):
     assert any(term in record["text"] for term in ("Docling", "Image", "OCR"))
 
 
+@requires_ocr
 def test_convert_bytes_image_with_ocr():
     import io
+
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (300, 100), color="white")
@@ -282,8 +290,53 @@ def test_convert_directory_and_upload(tmp_path: Path, db):
     assert all(d.status == "parsed" for d in docs)
 
 
+def test_bucket_cli_from_a_fresh_process(tmp_path: Path, db):
+    from sqlalchemy import select
+
+    bucket = Bucket(name=f"cli-{uuid.uuid4().hex[:8]}")
+    db.add(bucket)
+    db.commit()
+    source = tmp_path / "direct.txt"
+    source.write_text("Direct upload through the command. " * 20, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-m", "forge.converter", "--bucket", bucket.name, str(source)],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "1 file(s) uploaded" in proc.stdout
+    db.expire_all()
+    document = db.scalar(select(Document).where(Document.bucket_id == bucket.id))
+    assert document is not None and document.status == "parsed"
+    assert document.filename == source.name
+
+
+def test_bucket_directory_without_a_session(tmp_path: Path, db):
+    from sqlalchemy import select
+
+    bucket = Bucket(name=f"directory-{uuid.uuid4().hex[:8]}")
+    db.add(bucket)
+    db.commit()
+    (tmp_path / "one.txt").write_text("One directory document. " * 20, encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-m", "forge.converter", "--bucket", bucket.name, "-i", str(tmp_path)],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "1 file(s) uploaded" in proc.stdout
+    db.expire_all()
+    document = db.scalar(select(Document).where(Document.bucket_id == bucket.id))
+    assert document is not None and document.status == "parsed"
+
+
 def test_convert_docx_paragraphs_and_tables(tmp_path: Path):
-    import io
     import docx
 
     doc = docx.Document()
@@ -310,6 +363,7 @@ def test_convert_docx_paragraphs_and_tables(tmp_path: Path):
 
 def test_convert_bytes_docx_table():
     import io
+
     import docx
 
     doc = docx.Document()
@@ -335,6 +389,7 @@ def test_ocr_availability():
     assert len(name) > 0
 
 
+@requires_ocr
 def test_ocr_jpg_and_jpeg_images(tmp_path: Path):
     from PIL import Image, ImageDraw
 
@@ -360,6 +415,7 @@ def test_ocr_jpg_and_jpeg_images(tmp_path: Path):
     assert any(term in record["text"] for term in ("Warranty", "2026"))
 
 
+@requires_ocr
 def test_ocr_scanned_pdf(tmp_path: Path):
     from PIL import Image, ImageDraw
 
@@ -373,6 +429,7 @@ def test_ocr_scanned_pdf(tmp_path: Path):
     assert any(term in text for term in ("Scanned", "Legal", "Deed", "2026"))
 
 
+@requires_ocr
 def test_ocr_document_dispatcher(tmp_path: Path):
     from PIL import Image, ImageDraw
 
@@ -446,7 +503,8 @@ def test_convert_file_pdf_fixture_metadata():
     assert meta["page_count"] >= 1
 
 
-def test_convert_file_image_png_fixture_metadata():
+def test_convert_file_image_png_fixture_metadata(monkeypatch):
+    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Fixture image text")
     png_fixture = FIXTURES / "sample.png"
     assert png_fixture.is_file()
 
@@ -460,9 +518,12 @@ def test_convert_file_image_png_fixture_metadata():
     assert meta["height"] == 40
 
 
-def test_convert_file_image_jpg_fixture_metadata():
-    jpg_fixture = FIXTURES / "sample.jpg"
-    assert jpg_fixture.is_file()
+def test_convert_file_image_jpg_fixture_metadata(monkeypatch, tmp_path):
+    from PIL import Image
+
+    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Fixture image text")
+    jpg_fixture = tmp_path / "sample.jpg"
+    Image.new("RGB", (1, 1), color="white").save(jpg_fixture, format="JPEG")
 
     record = convert_file(jpg_fixture, include_metadata=True)
     assert record["filename"] == "sample.jpg"
@@ -531,7 +592,9 @@ def test_ingest_converted_stores_extraction_metadata(db):
     docx_fixture = FIXTURES / "sample.docx"
     record = convert_file(docx_fixture, include_metadata=True)
 
-    bucket = Bucket(name=f"metadata-test-{uuid.uuid4().hex[:6]}", description="test metadata bucket")
+    bucket = Bucket(
+        name=f"metadata-test-{uuid.uuid4().hex[:6]}", description="test metadata bucket"
+    )
     db.add(bucket)
     db.commit()
 
@@ -550,7 +613,3 @@ def test_ingest_converted_stores_extraction_metadata(db):
     assert ext_meta["source_format"] == "docx"
     assert ext_meta["engine"] == "openxml"
     assert ext_meta["table_count"] == 1
-
-
-
-

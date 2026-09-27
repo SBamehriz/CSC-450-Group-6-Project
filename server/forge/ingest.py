@@ -85,7 +85,9 @@ def parse_html(raw: bytes) -> str:
     return text
 
 
-def parse_pdf_with_metadata(raw: bytes, filename: str = "document.pdf") -> tuple[str, dict[str, Any]]:
+def parse_pdf_with_metadata(
+    raw: bytes, filename: str = "document.pdf"
+) -> tuple[str, dict[str, Any]]:
     parse_err = None
     pages = []
     try:
@@ -129,7 +131,7 @@ def parse_pdf_with_metadata(raw: bytes, filename: str = "document.pdf") -> tuple
         char_count = len(text.strip())
         page_info = f"across {len(pages)} page(s)" if pages else ""
         raise ParseError(
-            f"This looks like a scanned PDF — only {char_count} characters of "
+            f"This looks like a scanned PDF, only {char_count} characters of "
             f"text {page_info}. OCR was unable to extract readable text."
         )
 
@@ -226,7 +228,9 @@ def parse_json(raw: bytes, filename: str) -> list[Parsed]:
     return documents
 
 
-def parse_docx_with_metadata(raw: bytes, filename: str = "document.docx") -> tuple[str, dict[str, Any]]:
+def parse_docx_with_metadata(
+    raw: bytes, filename: str = "document.docx"
+) -> tuple[str, dict[str, Any]]:
     """Parse DOCX file, returning extracted text and metadata with fallback to Docling."""
     try:
         text, meta = extract_docx_with_metadata(raw)
@@ -424,7 +428,9 @@ def extract_docx_paragraphs_and_tables(raw: bytes) -> str:
     return text
 
 
-def parse_image_with_metadata(raw: bytes, filename: str = "image.png") -> tuple[str, dict[str, Any]]:
+def parse_image_with_metadata(
+    raw: bytes, filename: str = "image.png"
+) -> tuple[str, dict[str, Any]]:
     """Parse raster image (.png, .jpg, .jpeg, etc.) using OCR and return text with metadata."""
     from PIL import Image
 

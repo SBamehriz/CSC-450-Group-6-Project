@@ -39,3 +39,22 @@ it('rejects a partial library when a later page fails', async () => {
   vi.stubGlobal('fetch', fetch);
   await expect(api.listBuckets()).rejects.toThrow('Database unavailable.');
 });
+
+it('creates a dataset snapshot with its split settings', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 'dataset-1' })));
+  vi.stubGlobal('fetch', fetch);
+  const payload = {
+    name: 'weekly',
+    description: 'Class demo',
+    bucket_id: 'bucket-1',
+    validation_fraction: 0.1,
+    seed: 42,
+  };
+  await api.createDataset(payload);
+  expect(fetch).toHaveBeenCalledWith('/api/datasets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  expect(api.datasetDownloadUrl('dataset-1')).toBe('/api/datasets/dataset-1/download');
+});

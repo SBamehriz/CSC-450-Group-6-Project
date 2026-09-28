@@ -195,6 +195,25 @@ a:hover {
   padding: var(--s4);
 }
 
+.dataset-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s4);
+  align-items: end;
+}
+.dataset-form .field {
+  min-width: 0;
+}
+.dataset-hint {
+  margin: var(--s2) 0 0;
+}
+.dataset-actions {
+  white-space: nowrap;
+}
+.dataset-actions .btn {
+  margin-left: var(--s2);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

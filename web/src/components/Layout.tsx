@@ -7,6 +7,7 @@ import { api } from '../api/client';
 const LINKS = [
   { to: '/', label: 'Overview' },
   { to: '/data', label: 'Data' },
+  { to: '/datasets', label: 'Datasets' },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

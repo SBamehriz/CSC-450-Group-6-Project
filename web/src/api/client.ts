@@ -7,6 +7,8 @@ export type Document = components['schemas']['DocumentOut'];
 export type DocumentPage = components['schemas']['Page_DocumentOut_'];
 export type DocumentText = components['schemas']['DocumentText'];
 export type UploadResult = components['schemas']['UploadResult'];
+export type Dataset = components['schemas']['DatasetOut'];
+export type DatasetCreate = components['schemas']['DatasetCreate'];
 
 const API_PREFIX = '/api';
 
@@ -105,4 +107,9 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
   deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' }),
+  listDatasets: () => allPages<Dataset>('/datasets'),
+  createDataset: (payload: DatasetCreate) =>
+    request<Dataset>('/datasets', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteDataset: (id: string) => request<void>(`/datasets/${id}`, { method: 'DELETE' }),
+  datasetDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/download`,
 };

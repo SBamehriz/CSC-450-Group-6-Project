@@ -9,7 +9,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.3+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4+-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-**Forge** helps us turn raw files into cleaned documents. We can upload files, check their text and quality flags, and organize them in buckets. The app has a React interface, a FastAPI backend, and a separate PyTorch script for model benchmarks. The database has dataset records, but the app does not build snapshots yet. Tokenization and model training are still future work.
+**Forge** helps us turn raw files into cleaned documents. We can upload files, check their text and quality flags, organize them in buckets, and save a frozen text snapshot. The app has a React interface, a FastAPI backend, and a separate PyTorch script for model benchmarks. Tokenization and model training from saved snapshots are still future work.
 
 ---
 
@@ -40,6 +40,7 @@ These are working areas, not a claim about who wrote each file. Please confirm t
   - [Supported Formats](#supported-formats)
   - [Heuristic Cleaning & Quality Metrics](#heuristic-cleaning--quality-metrics)
   - [Docling Converter Module (`converter.py`)](#docling-converter-module-converterpy)
+- [Dataset Snapshots](#dataset-snapshots)
 - [Tiny-LM GPT Architecture & GPU Benchmarks](#tiny-lm-gpt-architecture--gpu-benchmarks)
   - [Model Presets](#model-presets)
   - [Training Speed Spike (`train_spike.py`)](#training-speed-spike-train_spikepy)
@@ -108,6 +109,7 @@ flowchart LR
 - **Smart Text Cleaning**: Automatic removal of repetitive boilerplate lines ($\ge 5$ occurrences), control character stripping, and NFC normalization.
 - **Quality Scoring & Flags**: Measures `alpha_ratio`, `digit_ratio`, `non_ascii_ratio`, `mean_line_len`, and flags documents that are `too_short`, `low_alpha`, `long_lines`, or `encoding_suspect`.
 - **Intra-Bucket Deduplication**: Prevents duplicate documents within the same bucket using SHA-256 hashes of the normalized text.
+- **Dataset Snapshots**: Saves cleaned documents in train and validation JSONL files with a repeatable split and a checksum checked on download.
 - **Rough Token Estimates**: Uses about four characters per token for bucket planning. This does not tokenize the documents.
 - **Windowed Text Preview**: Safely stream and inspect windows of large text documents through the API without memory spikes.
 - **Causal GPT Presets**: Includes `nano` (2.96M), `micro` (9.06M), and `small` (33.87M) configurations.
@@ -139,6 +141,7 @@ CSC-450-Group-6-Project/
 │   │   ├── config.py          # Environment settings & storage path resolution
 │   │   ├── converter.py       # Docling document conversion utility (CLI & API)
 │   │   ├── db.py              # SQLite engine with WAL mode & pragmas
+│   │   ├── datasets.py        # Frozen text snapshots and downloads
 │   │   ├── documents.py       # Upload, pagination, text streaming, move & reject
 │   │   ├── errors.py          # Standardized error envelopes and handlers
 │   │   ├── ingest.py          # Parsing, cleaning, normalization, metric scoring
@@ -167,6 +170,7 @@ CSC-450-Group-6-Project/
 │   │   │   └── format.test.ts # Formatting unit tests
 │   │   ├── pages/
 │   │   │   ├── BucketsPage.tsx      # Buckets listing & bucket creation form
+│   │   │   ├── DatasetsPage.tsx     # Snapshot creation and downloads
 │   │   │   └── BucketDetailPage.tsx # Bucket inspector, upload zone, filter tabs
 │   │   └── main.tsx           # React root entrypoint & React Query provider
 ├── spike-results-gpu.json     # Benchmark metrics recorded on NVIDIA RTX 3050
@@ -445,6 +449,14 @@ Real benchmark run executed on **NVIDIA GeForce RTX 3050 Laptop GPU** (from [`sp
 
 ---
 
+## Dataset Snapshots
+
+Once a bucket has at least two parsed documents, open **Datasets** to save a snapshot. Give it a name, a validation percentage, and a seed. The app copies the selected cleaned text into a ZIP with `train.jsonl`, `validation.jsonl`, and `manifest.json`. The same seed and documents give the same split. The manifest lists source IDs and cleaned text hashes.
+
+The ZIP stays the same if you later change or delete a source document. Downloads check the saved ZIP checksum. A snapshot can include up to 1,000 documents and 20 MB of cleaned text. It has no token IDs, so `token_count` is zero. You can delete a snapshot unless a run still uses it. This step does not train a tokenizer or model.
+
+---
+
 ## REST API Reference
 
 The FastAPI backend exposes all core operations under the `/api` prefix. Interactive Swagger documentation is available at `http://127.0.0.1:8000/api/docs`.
@@ -474,6 +486,15 @@ The FastAPI backend exposes all core operations under the `/api` prefix. Interac
 | `POST` | `/api/documents/{id}/reject`| `{"reason": "..."}` | Mark document as rejected and clear content hash |
 | `DELETE`| `/api/documents/{id}`| N/A | Delete document and delete raw & cleaned files from disk |
 
+### Dataset Snapshots
+| Method | Endpoint | Payload | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/datasets` | Bucket ID, name, validation fraction, seed | Save a frozen text snapshot |
+| `GET` | `/api/datasets` | Pagination | List snapshots |
+| `GET` | `/api/datasets/{id}` | N/A | Get snapshot details |
+| `GET` | `/api/datasets/{id}/download` | N/A | Download a checksum verified ZIP |
+| `DELETE` | `/api/datasets/{id}` | N/A | Delete unless a run uses it |
+
 ---
 
 ## Database Architecture & Migrations
@@ -486,7 +507,7 @@ Forge utilizes **SQLite** configured in Write-Ahead Logging (`WAL`) mode with fo
 | :--- | :--- | :--- | :--- | :--- |
 | **`buckets`** | UUID | N/A | `name` (unique) | Isolated project workspaces for grouping documents |
 | **`documents`** | UUID | `bucket_id` -> `buckets.id` (RESTRICT) | `status`: `pending`, `parsed`, `failed`, `rejected`<br>`source_format`: `txt`, `md`, `html`, `pdf`, `docx`, `image`, `jsonl`, `other`<br>`(bucket_id, content_hash)` unique | Raw & cleaned document records, quality flags, word/char counts |
-| **`datasets`** | UUID | `bucket_id` -> `buckets.id` (SET NULL) | `status`: `draft`, `processing`, `ready`, `failed`<br>`name` (unique) | Dataset metadata. The snapshot workflow is still to come. |
+| **`datasets`** | UUID | `bucket_id` -> `buckets.id` (SET NULL) | `status`: `draft`, `processing`, `ready`, `failed`<br>`name` (unique) | Frozen cleaned text snapshots with split settings and archive checksum. |
 | **`jobs`** | UUID | N/A | `job_type`: `tokenization`, `training`, `eval`, `ingest`, `export`<br>`status`: `pending`, `running`, `completed`, `failed`, `cancelled` | Job metadata. These jobs are not active in the current UI. |
 | **`models`** | UUID | N/A | `preset`: `nano`, `micro`, `small`, `custom`<br>`name` (unique) | Model configuration records. |
 | **`runs`** | UUID | `model_id` -> `models.id` (RESTRICT)<br>`dataset_id` -> `datasets.id` (SET NULL) | `status`: `pending`, `running`, `completed`, `failed`, `stopped` | Run metadata. The UI does not train models yet. |

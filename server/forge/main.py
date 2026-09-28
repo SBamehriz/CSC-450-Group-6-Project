@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from forge import buckets, datasets, documents
+from forge import buckets, datasets, documents, overview
 from forge.db import get_session
 from forge.errors import ApiError, register_error_handlers
 from forge.schemas import Health
@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
     api.include_router(buckets.router)
     api.include_router(documents.router)
     api.include_router(datasets.router)
+    api.include_router(overview.router)
     app.include_router(api)
 
     _serve_interface(app)

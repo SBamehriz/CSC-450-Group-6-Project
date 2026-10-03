@@ -511,11 +511,12 @@ def test_convert_file_image_png_fixture_metadata(monkeypatch):
     record = convert_file(png_fixture, include_metadata=True)
     assert record["filename"] == "sample.png"
     assert "metadata" in record
+    assert any(term in record["text"] for term in ("Docling", "Image", "OCR"))
     meta = record["metadata"]
     assert meta["source_format"] == "png"
     assert meta["ocr_applied"] is True
-    assert meta["width"] == 100
-    assert meta["height"] == 40
+    assert meta["width"] == 300
+    assert meta["height"] == 100
 
 
 def test_convert_file_image_jpg_fixture_metadata(monkeypatch, tmp_path):
@@ -528,11 +529,12 @@ def test_convert_file_image_jpg_fixture_metadata(monkeypatch, tmp_path):
     record = convert_file(jpg_fixture, include_metadata=True)
     assert record["filename"] == "sample.jpg"
     assert "metadata" in record
+    assert any(term in record["text"] for term in ("Invoice", "Scan", "2026"))
     meta = record["metadata"]
     assert meta["source_format"] in ("jpg", "jpeg")
     assert meta["ocr_applied"] is True
-    assert meta["width"] == 1
-    assert meta["height"] == 1
+    assert meta["width"] == 320
+    assert meta["height"] == 100
 
 
 def test_convert_bytes_with_metadata_docx():

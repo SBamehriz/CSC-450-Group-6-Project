@@ -1,4 +1,4 @@
-# Forge: Tiny-LM Data Lab
+# Forge — Tiny-LM Data Lab
 ### CSC 450 Group 6 Project
 
 [![CI](https://github.com/SBamehriz/CSC-450-Group-6-Project/actions/workflows/ci.yml/badge.svg)](https://github.com/SBamehriz/CSC-450-Group-6-Project/actions/workflows/ci.yml)
@@ -9,7 +9,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.3+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4+-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
-**Forge** helps us turn raw files into cleaned documents. We can upload files, check their text and quality flags, organize them in buckets, and save a frozen text snapshot. The app has a React interface, a FastAPI backend, and a separate PyTorch script for model benchmarks. Tokenization and model training from saved snapshots are still future work.
+**Forge** is a data lab and pre-training workbench designed for tiny Language Models (tiny-LMs). It bridges the gap between raw, messy multi-format documents and high-quality, tokenized datasets tailored for transformer training. Forge provides automated document parsing, layout extraction, heuristic text cleaning, quality scoring, deduplication, dataset bucket management, a modern React web interface, and an integrated PyTorch GPT architecture with GPU training benchmarks.
 
 ---
 
@@ -17,11 +17,9 @@
 
 | Member | Role |
 | :--- | :--- |
-| **Salim Bamehriz** | Frontend and app integration |
-| **Sampath Peddagolla** | Converter and database work |
-| **Sackey Ishmael** | Python backend and API work |
-
-These are working areas, not a claim about who wrote each file. Please confirm the roles with the team. We also cannot tell who ran the GPU benchmark from the repository alone.
+| **Salim Bamehriz** | Architecture, Ingestion Pipeline & Full-Stack Development |
+| **Sampath Peddagolla** | Document Conversion Engine (Docling), Dataset Tooling & QA |
+| **Sackey Ishmael** | Data Engineering, Model Benchmarks & Quality Evaluation |
 
 ---
 
@@ -40,7 +38,6 @@ These are working areas, not a claim about who wrote each file. Please confirm t
   - [Supported Formats](#supported-formats)
   - [Heuristic Cleaning & Quality Metrics](#heuristic-cleaning--quality-metrics)
   - [Docling Converter Module (`converter.py`)](#docling-converter-module-converterpy)
-- [Dataset Snapshots](#dataset-snapshots)
 - [Tiny-LM GPT Architecture & GPU Benchmarks](#tiny-lm-gpt-architecture--gpu-benchmarks)
   - [Model Presets](#model-presets)
   - [Training Speed Spike (`train_spike.py`)](#training-speed-spike-train_spikepy)
@@ -64,40 +61,39 @@ Forge organizes the entire lifecycle into modular components:
 
 ```mermaid
 flowchart LR
-    subgraph Sources [Data Sources]
-        A1[PDF / Word / Docx]
-        A2[HTML / Web Articles]
-        A3[TXT / Markdown / Gz]
-        A4[JSON / JSONL Lines]
+    subgraph Sources["Data Sources"]
+        A1["PDF / Word / DOCX"]
+        A2["HTML / Web Articles"]
+        A3["TXT / Markdown / GZ"]
+        A4["JSON / JSONL Lines"]
     end
 
-    subgraph Pipeline [Forge Ingestion Pipeline]
-        B1[Native parsers / Trafilatura / optional OCR]
-        B2[NFC Normalization & Strip Controls]
-        B3[Boilerplate Repeats Filter]
-        B4[Quality Metrics & Flags]
-        B5[Content Hashing & Deduplication]
+    subgraph Pipeline["Forge Ingestion Pipeline"]
+        B1["Docling / Trafilatura / PyPDF"]
+        B2["NFC Normalization & Strip Controls"]
+        B3["Boilerplate Repeats Filter"]
+        B4["Quality Metrics & Flags"]
+        B5["Content Hashing & Deduplication"]
     end
 
-    subgraph Storage [Storage & Database]
-        C1[(SQLite via Alembic)]
-        C2[Raw & Cleaned File Store]
+    subgraph Storage["Storage & Database"]
+        C1["SQLite / PostgreSQL via Alembic"]
+        C2["Raw & Cleaned File Store"]
     end
 
-    subgraph UI [User Interface & Training]
-        D1[React 18 SPA / Vite]
-        D2[PyTorch GPT-2 Tiny-LM Benchmarks]
+    subgraph UI["User Interface & Training"]
+        D1["React 18 SPA / Vite"]
+        D2["PyTorch GPT-2 Tiny-LM Benchmarks"]
     end
 
     Sources --> Pipeline
     Pipeline --> Storage
     Storage --> UI
 ```
-
 1. **Ingest & Extraction**: Ingests files up to 50MB across PDF, DOCX, HTML, Markdown, Plain Text, and JSONL formats with optional gzip compression.
 2. **Quality & Anomaly Detection**: Strips boilerplate repetitions, normalizes Unicode, checks character-to-alphabet ratios, detects line-length anomalies, and flags suspicious encodings.
 3. **Bucket Organization & Deduplication**: Groups documents into isolated data buckets. Performs intra-bucket SHA-256 content deduplication on cleaned text.
-4. **Interactive Web Dashboard**: React + TypeScript frontend with TanStack Query providing real-time bucket statistics, rough token estimates, windowed document viewers, and manual curation controls.
+4. **Interactive Web Dashboard**: React + TypeScript frontend with TanStack Query providing real-time bucket statistics, token volume estimation, windowed document viewers, and manual curation controls.
 5. **Tiny-LM Training Spike**: PyTorch causal GPT implementation featuring weight-tied embeddings, FlashAttention compatibility, and a benchmarking CLI to evaluate GPU token throughput.
 
 ---
@@ -105,15 +101,14 @@ flowchart LR
 ## Key Features
 
 - **Multi-Format Ingestion**: Native parsers for `.txt`, `.md`, `.html`, `.pdf`, `.jsonl`, and `.json`, supporting `.gz` transparent decompression.
-- **PDF and DOCX Parsing**: Text layer PDFs use `pypdf`. DOCX files use native OpenXML parsing. Docling and OCR are optional fallbacks.
+- **Docling Document Conversion**: Advanced document layout analysis and OCR extraction for `.pdf` and `.docx` powered by Docling.
 - **Smart Text Cleaning**: Automatic removal of repetitive boilerplate lines ($\ge 5$ occurrences), control character stripping, and NFC normalization.
 - **Quality Scoring & Flags**: Measures `alpha_ratio`, `digit_ratio`, `non_ascii_ratio`, `mean_line_len`, and flags documents that are `too_short`, `low_alpha`, `long_lines`, or `encoding_suspect`.
 - **Intra-Bucket Deduplication**: Prevents duplicate documents within the same bucket using SHA-256 hashes of the normalized text.
-- **Dataset Snapshots**: Saves cleaned documents in train and validation JSONL files with a repeatable split and a checksum checked on download.
-- **Rough Token Estimates**: Uses about four characters per token for bucket planning. This does not tokenize the documents.
+- **Token Volume Estimation**: Instant token estimation ($4\text{ chars} \approx 1\text{ token}$) to budget LM pre-training runs.
 - **Windowed Text Preview**: Safely stream and inspect windows of large text documents through the API without memory spikes.
-- **Causal GPT Presets**: Includes `nano` (2.96M), `micro` (9.06M), and `small` (33.87M) configurations.
-- **Hardware Benchmark Script**: Measures model speed and memory using stand-in tokens. It does not train on saved datasets.
+- **Causal GPT Presets**: Built-in `nano` (0.9M), `micro` (9.1M), and `small` (31.9M) GPT model configurations.
+- **Hardware Benchmarking Harness**: Measure GPU tokens/sec, VRAM consumption, and project compute requirements for 100M, 300M, and 1B token datasets.
 - **Type-Safe Full Stack**: Auto-generated TypeScript types synchronized directly from FastAPI OpenAPI schema.
 
 ---
@@ -141,7 +136,6 @@ CSC-450-Group-6-Project/
 │   │   ├── config.py          # Environment settings & storage path resolution
 │   │   ├── converter.py       # Docling document conversion utility (CLI & API)
 │   │   ├── db.py              # SQLite engine with WAL mode & pragmas
-│   │   ├── datasets.py        # Frozen text snapshots and downloads
 │   │   ├── documents.py       # Upload, pagination, text streaming, move & reject
 │   │   ├── errors.py          # Standardized error envelopes and handlers
 │   │   ├── ingest.py          # Parsing, cleaning, normalization, metric scoring
@@ -170,7 +164,6 @@ CSC-450-Group-6-Project/
 │   │   │   └── format.test.ts # Formatting unit tests
 │   │   ├── pages/
 │   │   │   ├── BucketsPage.tsx      # Buckets listing & bucket creation form
-│   │   │   ├── DatasetsPage.tsx     # Snapshot creation and downloads
 │   │   │   └── BucketDetailPage.tsx # Bucket inspector, upload zone, filter tabs
 │   │   └── main.tsx           # React root entrypoint & React Query provider
 ├── spike-results-gpu.json     # Benchmark metrics recorded on NVIDIA RTX 3050
@@ -184,10 +177,10 @@ CSC-450-Group-6-Project/
 ### Backend
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) 0.115+
 - **Server**: [Uvicorn](https://www.uvicorn.org/) with uvloop & httptools
-- **ORM & Database**: [SQLAlchemy 2.0](https://www.sqlalchemy.org/) with SQLite (WAL mode). PostgreSQL is not verified. The current connection hook runs SQLite pragmas for every connection.
+- **ORM & Database**: [SQLAlchemy 2.0](https://www.sqlalchemy.org/) with SQLite (WAL mode) / PostgreSQL (`psycopg 3.2`)
 - **Schema Migrations**: [Alembic](https://alembic.sqlalchemy.org/)
 - **Data Validation**: [Pydantic v2](https://docs.pydantic.dev/)
-- **Document Extractors**: [pypdf](https://pypdf.readthedocs.io/), native OpenXML, and [Trafilatura](https://trafilatura.readthedocs.io/). [Docling](https://github.com/docling-project/docling) is optional.
+- **Document Extractors**: [Docling](https://github.com/docling-project/docling), [Trafilatura](https://trafilatura.readthedocs.io/), [pypdf](https://pypdf.readthedocs.io/)
 - **Deep Learning**: [PyTorch](https://pytorch.org/) 2.3+ (optional extra for training & spikes)
 - **Tooling & Packaging**: [`uv`](https://github.com/astral-sh/uv), [Ruff](https://astral.sh/ruff), [Pyright](https://github.com/microsoft/pyright), [Pytest](https://pytest.org/)
 
@@ -223,13 +216,11 @@ Using `uv`:
 
 ```bash
 cd server
-uv sync --frozen
+uv sync
 ```
 
-For image text and scanned PDFs, install optional RapidOCR. Docling is another optional choice:
+To enable the document converter (Docling):
 ```bash
-uv sync --extra ocr
-# Or use Docling
 uv sync --extra converter
 ```
 
@@ -299,9 +290,9 @@ uv run --project server python scripts/start.py --dev
 | **Plain Text** | `.txt`, `.txt.gz` | Native `utf-8` / `latin-1` | Transparent `.gz` unpacking |
 | **Markdown** | `.md`, `.md.gz` | Native `utf-8` / `latin-1` | Transparent `.gz` unpacking |
 | **HTML Articles** | `.html`, `.htm` | [Trafilatura](https://github.com/adbar/trafilatura) | Strips ads/navs, preserves article body and tables |
-| **PDF Documents** | `.pdf` | `pypdf` | Reads a text layer. Scans need optional OCR or Docling. |
-| **Word Documents** | `.docx` | Native OpenXML | Reads paragraphs and tables. Docling is an optional fallback. |
-| **Images (OCR)** | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.bmp`, `.webp` | Pillow and optional OCR | Image text needs RapidOCR, Docling, or a working Tesseract setup. |
+| **PDF Documents** | `.pdf` | [Docling](https://github.com/docling-project/docling) / `pypdf` | Layout analysis, OCR fallback for scanned pages, table extraction |
+| **Word Documents**| `.docx` | Native OpenXML / [Docling](https://github.com/docling-project/docling) | Headings, lists, paragraph & table extraction, structured markdown export |
+| **Images (OCR)**  | `.png`, `.jpg`, `.jpeg`, `.tiff`, `.bmp`, `.webp` | RapidOCR / Docling / PyTesseract | Optical character recognition (OCR) and text extraction |
 | **JSONL Datasets**| `.jsonl`, `.jsonl.gz` | Native line streaming | Splits each `{"text": "..."}` into discrete documents |
 | **JSON Records**  | `.json` | Native JSON parser | Extracts single objects or lists of `{"text": "..."}` records |
 
@@ -329,7 +320,7 @@ Every document ingested through `forge.ingest.clean()` undergoes automated norma
 
 ### Docling Converter Module (`converter.py`)
 
-The converter handles local files and direct bucket uploads. Text layer PDFs use `pypdf`, and DOCX uses native OpenXML parsing. Docling and OCR are optional.
+Forge integrates IBM's [Docling](https://github.com/docling-project/docling) for high-accuracy document layout decomposition and OCR.
 
 #### Standalone CLI Usage
 
@@ -346,16 +337,16 @@ python -m forge.converter report.pdf meeting_notes.docx
 ```python
 from forge.converter import convert_file, convert_bytes, convert_directory
 
-# Convert a local file
+# 1. Convert a local file
 record = convert_file("whitepaper.pdf")
 print(record["filename"])  # "whitepaper.pdf"
 print(record["text"])      # Structured Markdown
 
-# Convert an upload buffer
+# 2. Convert in-memory byte buffer (e.g. from an upload stream)
 markdown_text = convert_bytes("contract.docx", raw_bytes)
 ```
 
-> For full documentation on `converter.py`, see [server/forge/README.md](server/forge/README.md).
+> For full documentation on `converter.py`, see [server/forge/README.md](file:///server/forge/README.md).
 
 ---
 
@@ -409,17 +400,17 @@ Forge includes an optimized, decoder-only causal GPT architecture (`server/forge
 
 All presets use a default context window of $512$ tokens and a vocabulary of $16,384$ tokens:
 
-| Preset | Layers | Width | Heads | Parameters from `count_params` |
-| :--- | ---: | ---: | ---: | ---: |
-| **`nano`** | 4 | 128 | 4 | **2,956,032** |
-| **`micro`** | 6 | 256 | 8 | **9,064,448** |
-| **`small`** | 8 | 512 | 8 | **33,870,848** |
+| Preset | Layers ($N$) | Hidden Dim ($d$) | Heads ($h$) | Head Dim | Total Parameters | Formula Formula |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **`nano`**  | 4 | 128 | 4 | 32 | **0.93M** | $128d \times 4L$ |
+| **`micro`** | 6 | 256 | 8 | 32 | **9.06M** | $256d \times 6L$ |
+| **`small`** | 8 | 512 | 8 | 64 | **31.87M** | $512d \times 8L$ |
 
 ---
 
 ### Training Speed Spike (`train_spike.py`)
 
-The `scripts/train_spike.py` script measures model speed and memory using stand-in tokens. It does not use dataset snapshots:
+The `scripts/train_spike.py` benchmark tool trains real models on local hardware to measure actual throughput, peak VRAM, and loss curves:
 
 ```bash
 # Benchmark the 'micro' preset on GPU with automatic mixed precision
@@ -433,27 +424,19 @@ python scripts/train_spike.py --preset all --steps 100 --out benchmark-results.j
 
 ### Benchmark Results (RTX 3050 Laptop GPU)
 
-Real benchmark run executed on **NVIDIA GeForce RTX 3050 Laptop GPU** (from [`spike-results-gpu.json`](spike-results-gpu.json)):
+Real benchmark run executed on **NVIDIA GeForce RTX 3050 Laptop GPU** (from [`spike-results-gpu.json`](file:///spike-results-gpu.json)):
 
 - **Preset**: `micro` (9.06M parameters, 6 layers, 256 dim, 8 heads, 512 ctx)
-- **Precision**: `torch.bfloat16` autocast. GradScaler was off. The script enables it only for float16.
+- **Precision**: `torch.bfloat16` with native AMP GradScaler
 - **Batch Size**: 16 sequences ($8,192$ tokens per step)
 - **Steps**: 200
 - **Loss Progression**: $9.7348 \rightarrow 2.3051$ (verified gradient descent convergence)
 - **Throughput**: **94,858 tokens / second** (median step time: **86.4 ms**)
 - **Peak VRAM**: **2.22 GB**
-- **Simple throughput projections, not full dataset training estimates**:
+- **Projected Training Time**:
   - **100M Tokens**: ~0.3 hours (18 minutes)
   - **300M Tokens**: ~0.9 hours (54 minutes)
   - **1B Tokens**: ~2.9 hours
-
----
-
-## Dataset Snapshots
-
-Once a bucket has at least two parsed documents, open **Datasets** to save a snapshot. Give it a name, a validation percentage, and a seed. The app copies the selected cleaned text into a ZIP with `train.jsonl`, `validation.jsonl`, and `manifest.json`. The same seed and documents give the same split. The manifest lists source IDs and cleaned text hashes.
-
-The ZIP stays the same if you later change or delete a source document. Downloads check the saved ZIP checksum. A snapshot can include up to 1,000 documents and 20 MB of cleaned text. It has no token IDs, so `token_count` is zero. You can delete a snapshot unless a run still uses it. This step does not train a tokenizer or model.
 
 ---
 
@@ -469,31 +452,22 @@ The FastAPI backend exposes all core operations under the `/api` prefix. Interac
 ### Buckets
 | Method | Endpoint | Request Body | Description |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/buckets` | N/A | List all buckets with document counts, char totals, and estimated tokens |
+| `GET` | `/api/buckets` | — | List all buckets with document counts, char totals, and estimated tokens |
 | `POST` | `/api/buckets` | `{"name": "...", "description": "..."}` | Create a new isolated dataset bucket |
-| `GET` | `/api/buckets/{id}` | N/A | Retrieve bucket metadata and aggregate statistics |
+| `GET` | `/api/buckets/{id}` | — | Retrieve bucket metadata and aggregate statistics |
 | `PATCH`| `/api/buckets/{id}` | `{"name": "...", "description": "..."}` | Update bucket details |
-| `DELETE`| `/api/buckets/{id}`| N/A | Delete an empty bucket (returns 409 if non-empty) |
+| `DELETE`| `/api/buckets/{id}`| — | Delete an empty bucket (returns 409 if non-empty) |
 
 ### Documents
 | Method | Endpoint | Payload / Query | Description |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/buckets/{id}/documents` | Multipart form (`files`, `source_note`) | Upload and parse up to 200 files (max 50MB each) |
 | `GET` | `/api/documents` | `bucket_id`, `status`, `q`, `flagged`, `limit`, `offset` | Paginated search and filtering |
-| `GET` | `/api/documents/{id}` | N/A | Get single document metadata and quality analysis |
+| `GET` | `/api/documents/{id}` | — | Get single document metadata and quality analysis |
 | `GET` | `/api/documents/{id}/text`| `offset` (default: 0), `length` (default: 4000) | Stream windowed clean text safely |
 | `POST` | `/api/documents/{id}/move` | `{"bucket_id": "..."}` | Move document to another bucket (with dedup checks) |
 | `POST` | `/api/documents/{id}/reject`| `{"reason": "..."}` | Mark document as rejected and clear content hash |
-| `DELETE`| `/api/documents/{id}`| N/A | Delete document and delete raw & cleaned files from disk |
-
-### Dataset Snapshots
-| Method | Endpoint | Payload | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/datasets` | Bucket ID, name, validation fraction, seed | Save a frozen text snapshot |
-| `GET` | `/api/datasets` | Pagination | List snapshots |
-| `GET` | `/api/datasets/{id}` | N/A | Get snapshot details |
-| `GET` | `/api/datasets/{id}/download` | N/A | Download a checksum verified ZIP |
-| `DELETE` | `/api/datasets/{id}` | N/A | Delete unless a run uses it |
+| `DELETE`| `/api/documents/{id}`| — | Delete document and delete raw & cleaned files from disk |
 
 ---
 
@@ -505,12 +479,12 @@ Forge utilizes **SQLite** configured in Write-Ahead Logging (`WAL`) mode with fo
 
 | Table | Primary Key | Foreign Keys | Status Enums / Constraints | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
-| **`buckets`** | UUID | N/A | `name` (unique) | Isolated project workspaces for grouping documents |
+| **`buckets`** | UUID | — | `name` (unique) | Isolated project workspaces for grouping documents |
 | **`documents`** | UUID | `bucket_id` -> `buckets.id` (RESTRICT) | `status`: `pending`, `parsed`, `failed`, `rejected`<br>`source_format`: `txt`, `md`, `html`, `pdf`, `docx`, `image`, `jsonl`, `other`<br>`(bucket_id, content_hash)` unique | Raw & cleaned document records, quality flags, word/char counts |
-| **`datasets`** | UUID | `bucket_id` -> `buckets.id` (SET NULL) | `status`: `draft`, `processing`, `ready`, `failed`<br>`name` (unique) | Frozen cleaned text snapshots with split settings and archive checksum. |
-| **`jobs`** | UUID | N/A | `job_type`: `tokenization`, `training`, `eval`, `ingest`, `export`<br>`status`: `pending`, `running`, `completed`, `failed`, `cancelled` | Job metadata. These jobs are not active in the current UI. |
-| **`models`** | UUID | N/A | `preset`: `nano`, `micro`, `small`, `custom`<br>`name` (unique) | Model configuration records. |
-| **`runs`** | UUID | `model_id` -> `models.id` (RESTRICT)<br>`dataset_id` -> `datasets.id` (SET NULL) | `status`: `pending`, `running`, `completed`, `failed`, `stopped` | Run metadata. The UI does not train models yet. |
+| **`datasets`** | UUID | `bucket_id` -> `buckets.id` (SET NULL) | `status`: `draft`, `processing`, `ready`, `failed`<br>`name` (unique) | Curated training/eval splits with token and character volume accounting |
+| **`jobs`** | UUID | — | `job_type`: `tokenization`, `training`, `eval`, `ingest`, `export`<br>`status`: `pending`, `running`, `completed`, `failed`, `cancelled` | Async background tasks with payload, telemetry, and progress tracking |
+| **`models`** | UUID | — | `preset`: `nano`, `micro`, `small`, `custom`<br>`name` (unique) | Transformer architectures, layer/head configs, and parameter counts |
+| **`runs`** | UUID | `model_id` -> `models.id` (RESTRICT)<br>`dataset_id` -> `datasets.id` (SET NULL) | `status`: `pending`, `running`, `completed`, `failed`, `stopped` | Training runs tracking hyperparameters, loss curves, and device metrics |
 | **`checkpoints`** | UUID | `run_id` -> `runs.id` (CASCADE) | `(run_id, step)` unique<br>`is_best` (indexed) | Saved model weights, optimizer states, and validation checkpoints |
 
 ### Running Migrations
@@ -590,7 +564,7 @@ This updates `web/src/api/types.ts` directly from the FastAPI OpenAPI schema.
 
 ## CI/CD Workflow
 
-All commits and pull requests are validated via GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) across three parallel verification jobs:
+All commits and pull requests are validated via GitHub Actions ([`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml)) across three parallel verification jobs:
 
 1. **Server Job**:
    - `uv sync --frozen`

@@ -122,3 +122,11 @@ def delete_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session
     session.delete(dataset)
     session.commit()
     return Response(status_code=204)
+
+@router.get("/{dataset_id}/download")
+def download_dataset(
+dataset_id: uuid.UUID,
+session: Session = Depends(get_session),
+):
+    _load_one(session, dataset_id)
+    return Response(status_code=200)

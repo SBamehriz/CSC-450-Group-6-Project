@@ -61,36 +61,35 @@ Forge organizes the entire lifecycle into modular components:
 
 ```mermaid
 flowchart LR
-    subgraph Sources [Data Sources]
-        A1[PDF / Word / Docx]
-        A2[HTML / Web Articles]
-        A3[TXT / Markdown / Gz]
-        A4[JSON / JSONL Lines]
+    subgraph Sources["Data Sources"]
+        A1["PDF / Word / DOCX"]
+        A2["HTML / Web Articles"]
+        A3["TXT / Markdown / GZ"]
+        A4["JSON / JSONL Lines"]
     end
 
-    subgraph Pipeline [Forge Ingestion Pipeline]
-        B1[Docling / Trafilatura / PyPDF]
-        B2[NFC Normalization & Strip Controls]
-        B3[Boilerplate Repeats Filter]
-        B4[Quality Metrics & Flags]
-        B5[Content Hashing & Deduplication]
+    subgraph Pipeline["Forge Ingestion Pipeline"]
+        B1["Docling / Trafilatura / PyPDF"]
+        B2["NFC Normalization & Strip Controls"]
+        B3["Boilerplate Repeats Filter"]
+        B4["Quality Metrics & Flags"]
+        B5["Content Hashing & Deduplication"]
     end
 
-    subgraph Storage [Storage & Database]
-        C1[(SQLite / PostgreSQL via Alembic)]
-        C2[Raw & Cleaned File Store]
+    subgraph Storage["Storage & Database"]
+        C1["SQLite / PostgreSQL via Alembic"]
+        C2["Raw & Cleaned File Store"]
     end
 
-    subgraph UI [User Interface & Training]
-        D1[React 18 SPA / Vite]
-        D2[PyTorch GPT-2 Tiny-LM Benchmarks]
+    subgraph UI["User Interface & Training"]
+        D1["React 18 SPA / Vite"]
+        D2["PyTorch GPT-2 Tiny-LM Benchmarks"]
     end
 
     Sources --> Pipeline
     Pipeline --> Storage
     Storage --> UI
 ```
-
 1. **Ingest & Extraction**: Ingests files up to 50MB across PDF, DOCX, HTML, Markdown, Plain Text, and JSONL formats with optional gzip compression.
 2. **Quality & Anomaly Detection**: Strips boilerplate repetitions, normalizes Unicode, checks character-to-alphabet ratios, detects line-length anomalies, and flags suspicious encodings.
 3. **Bucket Organization & Deduplication**: Groups documents into isolated data buckets. Performs intra-bucket SHA-256 content deduplication on cleaned text.

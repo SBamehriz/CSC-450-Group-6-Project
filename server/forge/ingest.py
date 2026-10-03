@@ -617,7 +617,25 @@ def clean(text: str, mode: str = "standard", encoding_suspect: bool = False) -> 
     )
 
 
-def looks_mis_decoded(raw: bytes) -> bool:
+BINARY_EXTENSIONS = ("pdf", "docx", *IMAGE_EXTENSIONS)
+TEXT_EXTENSIONS = ("txt", "md", "html", "htm", "jsonl", "json")
+
+
+def is_binary_format(filename_or_ext: str) -> bool:
+    ext, _ = split_extension(filename_or_ext)
+    return ext in BINARY_EXTENSIONS
+
+
+def looks_mis_decoded(raw: bytes, filename: str | None = None) -> bool:
+    if filename is not None:
+        ext, gzipped = split_extension(filename)
+        if ext in BINARY_EXTENSIONS:
+            return False
+        if gzipped:
+            try:
+                raw = gzip.decompress(raw)
+            except Exception:
+                pass
     try:
         raw.decode("utf-8")
         return False

@@ -288,6 +288,20 @@ def test_utf8_is_not_flagged_as_suspect():
     assert looks_mis_decoded("café".encode()) is False
 
 
+def test_looks_mis_decoded_ignores_binary_formats():
+    # Arbitrary binary bytes for PDF, DOCX, and images must not be marked mis-decoded
+    arbitrary_binary = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xfe\xfd\x80"
+    for name in ("doc.pdf", "doc.docx", "photo.png", "photo.jpg", "photo.jpeg"):
+        assert looks_mis_decoded(arbitrary_binary, filename=name) is False
+
+    # Normal text with non-UTF-8 bytes is still marked mis-decoded
+    assert looks_mis_decoded(b"caf\xe9", filename="notes.txt") is True
+    assert looks_mis_decoded(b"caf\xe9", filename="notes.md") is True
+    assert looks_mis_decoded(b"caf\xe9", filename="page.html") is True
+    # Valid UTF-8 text is not marked mis-decoded
+    assert looks_mis_decoded("valid text".encode("utf-8"), filename="notes.txt") is False
+
+
 def test_encoding_suspect_becomes_a_flag():
     cleaned = clean("some text " * 100, encoding_suspect=True)
     assert "encoding_suspect" in cleaned.quality["flags"]

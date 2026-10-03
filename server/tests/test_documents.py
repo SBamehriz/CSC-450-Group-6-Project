@@ -102,7 +102,7 @@ def test_one_bad_file_does_not_spoil_the_batch(client, bucket):
     by_name = {o["filename"]: o for o in body["outcomes"]}
     assert "scanned" in by_name["scanned.pdf"]["error"].lower()
     assert "OCR" in by_name["scanned.pdf"]["error"]
-    assert ".docx" in by_name["thesis.docx"]["error"]
+    assert "DOCX" in by_name["thesis.docx"]["error"]
 
 
 def test_an_unreadable_file_records_what_it_actually_was(client, bucket):
@@ -428,4 +428,74 @@ def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
     assert by_filename["memo.txt"]["source_format"] == "txt"
     assert all(d["source_note"] == "converted by docling" for d in docs)
     assert all(d["content_hash"] for d in docs)
+
+
+def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
+    import io
+    import docx
+    from PIL import Image, ImageDraw
+
+    # 1. Valid PDF fixture
+    pdf_bytes = (FIXTURES / "sample.pdf").read_bytes()
+
+    # 2. Valid DOCX
+    doc = docx.Document()
+    doc.add_paragraph("A perfectly normal paragraph of English text long enough to clear length flags. " * 5)
+    buf_docx = io.BytesIO()
+    doc.save(buf_docx)
+
+    # 3. Valid PNG
+    img_png = Image.new("RGB", (300, 100), color="white")
+    d1 = ImageDraw.Draw(img_png)
+    d1.text((10, 30), "Docling Image OCR", fill="black")
+    buf_png = io.BytesIO()
+    img_png.save(buf_png, format="PNG")
+
+    # 4. Valid JPG
+    img_jpg = Image.new("RGB", (320, 100), color="white")
+    d2 = ImageDraw.Draw(img_jpg)
+    d2.text((10, 30), "Invoice JPG Scan 2026", fill="black")
+    buf_jpg = io.BytesIO()
+    img_jpg.save(buf_jpg, format="JPEG")
+
+    res = upload(
+        client,
+        bucket,
+        [
+            ("valid.pdf", pdf_bytes),
+            ("valid.docx", buf_docx.getvalue()),
+            ("valid.png", buf_png.getvalue()),
+            ("valid.jpg", buf_jpg.getvalue()),
+        ],
+    )
+    assert res.status_code == 201
+    body = res.json()
+    assert body["parsed"] == 4
+    assert body["failed"] == 0
+
+    docs = client.get(f"/api/documents?bucket_id={bucket}").json()["items"]
+    assert len(docs) == 4
+    for doc_item in docs:
+        flags = doc_item["quality"].get("flags", [])
+        assert "encoding_suspect" not in flags, (
+            f"Binary file {doc_item['filename']} was incorrectly marked encoding_suspect: {flags}"
+        )
+
+
+def test_text_uploads_retain_encoding_checks(client, bucket):
+    # Non-UTF-8 text should receive encoding_suspect flag
+    latin1_bytes = (FIXTURES / "latin1.txt").read_bytes()
+    res1 = upload(client, bucket, [("legacy.txt", latin1_bytes)])
+    assert res1.status_code == 201
+    doc_latin1 = client.get(f"/api/documents?bucket_id={bucket}&q=legacy.txt").json()["items"][0]
+    assert doc_latin1["status"] == "parsed"
+    assert "encoding_suspect" in doc_latin1["quality"].get("flags", [])
+
+    # Clean UTF-8 text should NOT receive encoding_suspect flag
+    clean_text = ("This is clean UTF-8 text that easily satisfies standard quality checks. " * 8).encode("utf-8")
+    res2 = upload(client, bucket, [("clean.txt", clean_text)])
+    assert res2.status_code == 201
+    doc_clean = client.get(f"/api/documents?bucket_id={bucket}&q=clean.txt").json()["items"][0]
+    assert doc_clean["status"] == "parsed"
+    assert "encoding_suspect" not in doc_clean["quality"].get("flags", [])
 

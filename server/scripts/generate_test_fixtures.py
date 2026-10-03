@@ -67,26 +67,32 @@ def create_sample_docx(out_path: Path):
 
 
 def create_sample_png(out_path: Path):
-    # Valid PNG: 100x40 RGB white image with simple IDAT chunk
+    try:
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGB", (300, 100), color="white")
+        d = ImageDraw.Draw(img)
+        d.text((10, 30), "Docling Image OCR", fill="black")
+        img.save(out_path, format="PNG")
+        print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
+        return
+    except ImportError:
+        pass
+
+    # Fallback without PIL: 100x40 RGB white image with simple IDAT chunk
     width, height = 100, 40
     raw_rows = []
     for _ in range(height):
-        # filter byte 0, then 100 * 3 bytes of 255 (white)
         raw_rows.append(b"\x00" + b"\xff\xff\xff" * width)
     raw_data = b"".join(raw_rows)
     compressed = zlib.compress(raw_data)
 
     png_header = b"\x89PNG\r\n\x1a\n"
-    # IHDR
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     ihdr_crc = struct.pack(">I", zlib.crc32(b"IHDR" + ihdr_data))
     ihdr_chunk = struct.pack(">I", len(ihdr_data)) + b"IHDR" + ihdr_data + ihdr_crc
-
-    # IDAT
     idat_crc = struct.pack(">I", zlib.crc32(b"IDAT" + compressed))
     idat_chunk = struct.pack(">I", len(compressed)) + b"IDAT" + compressed + idat_crc
-
-    # IEND
     iend_crc = struct.pack(">I", zlib.crc32(b"IEND"))
     iend_chunk = struct.pack(">I", 0) + b"IEND" + iend_crc
 
@@ -96,7 +102,19 @@ def create_sample_png(out_path: Path):
 
 
 def create_sample_jpg(out_path: Path):
-    # Minimal 1x1 valid JFIF JPEG
+    try:
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGB", (320, 100), color="white")
+        d = ImageDraw.Draw(img)
+        d.text((10, 30), "Invoice JPG Scan 2026", fill="black")
+        img.save(out_path, format="JPEG")
+        print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
+        return
+    except ImportError:
+        pass
+
+    # Minimal 1x1 valid JFIF JPEG fallback
     jpg_bytes = bytes([
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
         0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,

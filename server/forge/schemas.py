@@ -156,6 +156,18 @@ class DatasetCreate(BaseModel):
             raise ValueError("cannot be blank")
         return value
 
+    @field_validator("name", "description")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("name")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value:
+            raise ValueError("cannot be blank")
+        return value
+
 
 class DatasetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

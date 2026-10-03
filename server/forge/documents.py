@@ -12,7 +12,6 @@ from forge.ingest import (
     IMAGE_EXTENSIONS,
     ParseError,
     clean,
-    is_binary_format,
     looks_mis_decoded,
     parse,
     split_extension,
@@ -149,16 +148,14 @@ def _ingest_one(
         session.flush()
         return [UploadOutcome(filename=name, status="failed", error=str(problem))]
 
-    suspect = looks_mis_decoded(raw, filename=name)
+    suspect = looks_mis_decoded(raw)
     raw_uri = _write(f"raw/{uuid.uuid4()}", raw)
     outcomes: list[UploadOutcome] = []
 
     for piece in pieces:
-        piece_fmt = _stored_format(piece.filename)
-        piece_is_binary = piece_fmt in ("pdf", "docx", "image") or is_binary_format(name)
-        cleaned = clean(piece.text, encoding_suspect=False if piece_is_binary else suspect)
+        cleaned = clean(piece.text, encoding_suspect=suspect)
 
-        fmt = piece_fmt
+        fmt = _stored_format(piece.filename)
         if fmt == "other":
             fmt = _stored_format(name)
 

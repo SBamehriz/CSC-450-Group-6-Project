@@ -214,6 +214,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/overview/stats': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Stats */
+    get: operations['get_stats_api_overview_stats_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/overview/recent-uploads': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recent Uploads */
+    get: operations['recent_uploads_api_overview_recent_uploads_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -404,6 +438,33 @@ export interface components {
        */
       bucket_id: string;
     };
+    /** OverviewStats */
+    OverviewStats: {
+      /** Buckets */
+      buckets: number;
+      /** Documents */
+      documents: number;
+      /** Parsed Documents */
+      parsed_documents: number;
+      /** Failed Documents */
+      failed_documents: number;
+      /** Rejected Documents */
+      rejected_documents: number;
+      /** Pending Documents */
+      pending_documents: number;
+      /** Flagged Documents */
+      flagged_documents: number;
+      /** Chars */
+      chars: number;
+      /** Words */
+      words: number;
+      /** Est Tokens */
+      est_tokens: number;
+      /** Snapshots */
+      snapshots: number;
+      /** Ready Snapshots */
+      ready_snapshots: number;
+    };
     /** Page[BucketOut] */
     Page_BucketOut_: {
       /** Items */
@@ -424,6 +485,53 @@ export interface components {
       items: components['schemas']['DocumentOut'][];
       /** Total */
       total: number;
+    };
+    /** Page[RecentUpload] */
+    Page_RecentUpload_: {
+      /** Items */
+      items: components['schemas']['RecentUpload'][];
+      /** Total */
+      total: number;
+    };
+    /** RecentUpload */
+    RecentUpload: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Bucket Id
+       * Format: uuid
+       */
+      bucket_id: string;
+      /** Filename */
+      filename: string;
+      /** Source Format */
+      source_format: string;
+      /** Source Note */
+      source_note: string;
+      /** Status */
+      status: string;
+      /** Error */
+      error: string | null;
+      /** Content Hash */
+      content_hash: string | null;
+      /** Char Count */
+      char_count: number;
+      /** Word Count */
+      word_count: number;
+      /** Quality */
+      quality: {
+        [key: string]: unknown;
+      };
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Bucket Name */
+      bucket_name: string;
     };
     /** RejectDocument */
     RejectDocument: {
@@ -1035,6 +1143,58 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_stats_api_overview_stats_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OverviewStats'];
+        };
+      };
+    };
+  };
+  recent_uploads_api_overview_recent_uploads_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_RecentUpload_'];
+        };
       };
       /** @description Validation Error */
       422: {

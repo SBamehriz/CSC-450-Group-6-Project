@@ -76,6 +76,25 @@ class DocumentOut(BaseModel):
     created_at: datetime
 
 
+class RecentUpload(DocumentOut):
+    bucket_name: str
+
+
+class OverviewStats(BaseModel):
+    buckets: int
+    documents: int
+    parsed_documents: int
+    failed_documents: int
+    rejected_documents: int
+    pending_documents: int
+    flagged_documents: int
+    chars: int
+    words: int
+    est_tokens: int
+    snapshots: int
+    ready_snapshots: int
+
+
 class UploadOutcome(BaseModel):
     """One line per file the user handed us, in the order they sent them."""
 

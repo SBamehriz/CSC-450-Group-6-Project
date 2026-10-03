@@ -58,3 +58,29 @@ it('creates a dataset snapshot with its split settings', async () => {
   });
   expect(api.datasetDownloadUrl('dataset-1')).toBe('/api/datasets/dataset-1/download');
 });
+
+it('uses the dashboard endpoints and loads document details', async () => {
+  const fetch = vi
+    .fn()
+    .mockImplementation(async () => new Response(JSON.stringify({ items: [], total: 0 })));
+  vi.stubGlobal('fetch', fetch);
+  await api.overviewStats();
+  await api.recentUploads();
+  await api.getDocument('doc-1');
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+    '/api/overview/stats',
+    '/api/overview/recent-uploads?limit=8&offset=0',
+    '/api/documents/doc-1',
+  ]);
+});
+
+it('sends the page offset and encoded document filters', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [], total: 0 })));
+  vi.stubGlobal('fetch', fetch);
+  await api.listDocuments({ bucketId: 'bucket-1', offset: 50, q: 'notes & tests', flagged: true });
+  const url = new URL(fetch.mock.calls[0][0], 'http://localhost');
+  expect(url.searchParams.get('limit')).toBe('50');
+  expect(url.searchParams.get('offset')).toBe('50');
+  expect(url.searchParams.get('q')).toBe('notes & tests');
+  expect(url.searchParams.get('flagged')).toBe('true');
+});

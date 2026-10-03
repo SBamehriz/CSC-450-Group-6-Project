@@ -9,6 +9,10 @@ export type DocumentText = components['schemas']['DocumentText'];
 export type UploadResult = components['schemas']['UploadResult'];
 export type Dataset = components['schemas']['DatasetOut'];
 export type DatasetCreate = components['schemas']['DatasetCreate'];
+export type OverviewStats = components['schemas']['OverviewStats'];
+export type RecentUpload = components['schemas']['RecentUpload'];
+
+export const DOCUMENT_PAGE = 50;
 
 const API_PREFIX = '/api';
 
@@ -66,6 +70,9 @@ async function allPages<T>(path: string): Promise<Omit<BucketPage, 'items'> & { 
 
 export const api = {
   health: () => request<Health>('/health'),
+  overviewStats: () => request<OverviewStats>('/overview/stats'),
+  recentUploads: () =>
+    request<{ items: RecentUpload[]; total: number }>('/overview/recent-uploads?limit=8&offset=0'),
   listBuckets: () => allPages<Bucket>('/buckets'),
   getBucket: (id: string) => request<Bucket>(`/buckets/${id}`),
   createBucket: (name: string, description: string) =>
@@ -84,16 +91,24 @@ export const api = {
       body: form,
     });
   },
-  listDocuments: (params: { bucketId: string; status?: string; q?: string; flagged?: boolean }) => {
+  listDocuments: (params: {
+    bucketId: string;
+    status?: string;
+    q?: string;
+    flagged?: boolean;
+    offset?: number;
+  }) => {
     const query = new URLSearchParams({
       bucket_id: params.bucketId,
-      limit: '200',
+      limit: String(DOCUMENT_PAGE),
+      offset: String(params.offset ?? 0),
     });
     if (params.status) query.set('status', params.status);
     if (params.q) query.set('q', params.q);
     if (params.flagged) query.set('flagged', 'true');
     return request<DocumentPage>(`/documents?${query}`);
   },
+  getDocument: (id: string) => request<Document>(`/documents/${id}`),
   documentText: (id: string, offset = 0, length = 4000) =>
     request<DocumentText>(`/documents/${id}/text?offset=${offset}&length=${length}`),
   moveDocument: (id: string, bucketId: string) =>

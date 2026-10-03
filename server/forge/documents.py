@@ -245,7 +245,7 @@ def list_documents(
     rows = session.execute(
         select(Document)
         .where(*filters)
-        .order_by(Document.created_at.desc(), Document.filename)
+        .order_by(Document.created_at.desc(), Document.id.desc())
         .limit(limit)
         .offset(offset)
     ).scalars()

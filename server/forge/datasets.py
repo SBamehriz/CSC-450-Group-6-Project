@@ -95,6 +95,14 @@ def create_dataset(payload: DatasetCreate, session: Session = Depends(get_sessio
         if doc_count > 0:
             status = "ready"
 
+    config = dict(payload.config)
+    validation_documents = round(doc_count * payload.validation_fraction)
+    train_documents = doc_count - validation_documents
+
+    config["validation_documents"] = validation_documents
+    config["train_documents"] = train_documents
+    config["seed"] = payload.seed   
+
     dataset = Dataset(
         name=payload.name,
         description=payload.description,
@@ -103,7 +111,7 @@ def create_dataset(payload: DatasetCreate, session: Session = Depends(get_sessio
         doc_count=doc_count,
         char_count=char_count,
         token_count=token_count,
-        config=payload.config,
+        config=config,
     )
     session.add(dataset)
     session.commit()

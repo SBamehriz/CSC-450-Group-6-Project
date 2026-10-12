@@ -311,7 +311,7 @@ def test_looks_mis_decoded_ignores_binary_formats():
     assert looks_mis_decoded(b"caf\xe9", filename="notes.md") is True
     assert looks_mis_decoded(b"caf\xe9", filename="page.html") is True
     # Valid UTF-8 text is not marked mis-decoded
-    assert looks_mis_decoded("valid text".encode("utf-8"), filename="notes.txt") is False
+    assert looks_mis_decoded(b"valid text", filename="notes.txt") is False
 
 
 def test_encoding_suspect_becomes_a_flag():

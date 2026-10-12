@@ -123,6 +123,9 @@ export const api = {
     }),
   deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' }),
   listDatasets: () => allPages<Dataset>('/datasets'),
+  getDataset: (id: string) => request<Dataset>(`/datasets/${id}`),
+  verifyDataset: (id: string) =>
+    request<components['schemas']['SnapshotCheck']>(`/datasets/${id}/verify`),
   createDataset: (payload: DatasetCreate) =>
     request<Dataset>('/datasets', { method: 'POST', body: JSON.stringify(payload) }),
   deleteDataset: (id: string) => request<void>(`/datasets/${id}`, { method: 'DELETE' }),

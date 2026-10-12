@@ -148,7 +148,7 @@ def _ingest_one(
         session.flush()
         return [UploadOutcome(filename=name, status="failed", error=str(problem))]
 
-    suspect = looks_mis_decoded(raw)
+    suspect = looks_mis_decoded(raw, filename=name)
     raw_uri = _write(f"raw/{uuid.uuid4()}", raw)
     outcomes: list[UploadOutcome] = []
 

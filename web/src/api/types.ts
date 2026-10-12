@@ -197,6 +197,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/datasets/{dataset_id}/verify': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Verify Dataset */
+    get: operations['verify_dataset_api_datasets__dataset_id__verify_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/datasets/{dataset_id}/download': {
     parameters: {
       query?: never;
@@ -365,6 +382,16 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /**
+       * Download Ready
+       * @default false
+       */
+      download_ready: boolean;
+      /**
+       * Readiness Note
+       * @default
+       */
+      readiness_note: string;
     };
     /** DocumentOut */
     DocumentOut: {
@@ -540,6 +567,23 @@ export interface components {
        * @default
        */
       reason: string;
+    };
+    /** SnapshotCheck */
+    SnapshotCheck: {
+      /** Valid */
+      valid: boolean;
+      /** Message */
+      message: string;
+      /**
+       * Train Documents
+       * @default 0
+       */
+      train_documents: number;
+      /**
+       * Validation Documents
+       * @default 0
+       */
+      validation_documents: number;
     };
     /**
      * UploadOutcome
@@ -1004,6 +1048,8 @@ export interface operations {
   list_datasets_api_datasets_get: {
     parameters: {
       query?: {
+        bucket_id?: string | null;
+        status?: string | null;
         limit?: number;
         offset?: number;
       };
@@ -1114,6 +1160,37 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  verify_dataset_api_datasets__dataset_id__verify_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SnapshotCheck'];
+        };
       };
       /** @description Validation Error */
       422: {

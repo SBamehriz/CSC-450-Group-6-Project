@@ -138,6 +138,8 @@ class Health(BaseModel):
 
 
 class DatasetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
     bucket_id: uuid.UUID
@@ -171,6 +173,15 @@ class DatasetOut(BaseModel):
     config: dict
     artifact_uri: str | None
     created_at: datetime
+    download_ready: bool = False
+    readiness_note: str = ""
+
+
+class SnapshotCheck(BaseModel):
+    valid: bool
+    message: str
+    train_documents: int = 0
+    validation_documents: int = 0
 
 
 class JobCreate(BaseModel):

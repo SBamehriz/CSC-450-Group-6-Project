@@ -58,9 +58,29 @@ const snapshot: Dataset = {
   char_count: 10000,
   token_count: 0,
   artifact_uri: 'datasets/saved.zip',
+  download_ready: true,
+  readiness_note: '',
   config: { train_documents: 45, validation_documents: 5, seed: 42, sha256: 'a'.repeat(64) },
   created_at: bucket.created_at,
 };
+
+it('does not offer a download for an old ready record without a ZIP', async () => {
+  vi.spyOn(api, 'listBuckets').mockResolvedValue({ items: [bucket], total: 1 });
+  vi.spyOn(api, 'listDatasets').mockResolvedValue({
+    items: [
+      {
+        ...snapshot,
+        download_ready: false,
+        artifact_uri: null,
+        readiness_note: 'Build a new snapshot.',
+      },
+    ],
+    total: 1,
+  });
+  open(<DatasetsPage />);
+  await screen.findByText('Needs a new snapshot');
+  expect(screen.queryByRole('link', { name: 'Download ZIP' })).toBeNull();
+});
 
 it('previews the actual source, updates the split target, and explains the archive', async () => {
   vi.spyOn(api, 'listBuckets').mockResolvedValue({ items: [bucket], total: 1 });

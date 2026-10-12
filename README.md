@@ -58,7 +58,7 @@ See [server/forge/README.md](server/forge/README.md) for converter options and P
 
 ## Current Status
 
-Dataset snapshot creation and ZIP downloads need repair after the latest merge. The Python lockfile also needs updating. Tokenization and model training from uploaded documents are still future work.
+Text snapshots now save cleaned documents into a ZIP with train.jsonl, validation.jsonl, and manifest.json. Splits use whole documents and a fixed seed. Downloads check the saved hashes, and snapshots keep working after source files are removed. Old dataset records without a ZIP need a new snapshot. Tokenization and training controls are next.
 
 ## Running Tests
 
@@ -89,3 +89,7 @@ npm run build
 ## License
 
 Developed for CSC 450. All rights reserved by Group 6.
+
+## Sprint 6 dataset update
+
+The training and validation counts and seed now describe real saved files. The split test uploads ten text files and checks that eight training documents and two validation documents appear in the downloaded ZIP. Dataset creation uses the current request fields. Small sources keep at least one document in each split.

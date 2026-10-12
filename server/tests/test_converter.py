@@ -511,7 +511,7 @@ def test_convert_file_image_png_fixture_metadata(monkeypatch):
     record = convert_file(png_fixture, include_metadata=True)
     assert record["filename"] == "sample.png"
     assert "metadata" in record
-    assert any(term in record["text"] for term in ("Docling", "Image", "OCR"))
+    assert record["text"] == "Fixture image text"
     meta = record["metadata"]
     assert meta["source_format"] == "png"
     assert meta["ocr_applied"] is True
@@ -524,12 +524,12 @@ def test_convert_file_image_jpg_fixture_metadata(monkeypatch, tmp_path):
 
     monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Fixture image text")
     jpg_fixture = tmp_path / "sample.jpg"
-    Image.new("RGB", (1, 1), color="white").save(jpg_fixture, format="JPEG")
+    Image.new("RGB", (320, 100), color="white").save(jpg_fixture, format="JPEG")
 
     record = convert_file(jpg_fixture, include_metadata=True)
     assert record["filename"] == "sample.jpg"
     assert "metadata" in record
-    assert any(term in record["text"] for term in ("Invoice", "Scan", "2026"))
+    assert record["text"] == "Fixture image text"
     meta = record["metadata"]
     assert meta["source_format"] in ("jpg", "jpeg")
     assert meta["ocr_applied"] is True

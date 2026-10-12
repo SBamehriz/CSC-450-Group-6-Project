@@ -130,7 +130,9 @@ def bucket(client):
 def test_ocr_damaged_image_in_upload_batch(client, bucket):
     """Verify damaged images do not crash the upload batch workflow."""
     corrupted_bytes = b"\x89PNG\r\n\x1a\ncorrupted_data_here"
-    good_text = b"This is perfectly valid ordinary text that easily passes all threshold checks. " * 8
+    good_text = (
+        b"This is perfectly valid ordinary text that easily passes all threshold checks. " * 8
+    )
 
     res = client.post(
         f"/api/buckets/{bucket}/documents",

@@ -121,11 +121,14 @@ def test_an_unsupported_file_records_as_other(client, bucket):
 
 def test_upload_valid_docx_and_image(client, bucket):
     import io
+
     import docx
     from PIL import Image, ImageDraw
 
     doc = docx.Document()
-    doc.add_paragraph("A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5)
+    doc.add_paragraph(
+        "A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5
+    )
     buf_docx = io.BytesIO()
     doc.save(buf_docx)
 
@@ -432,6 +435,7 @@ def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
 
 def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
     import io
+
     import docx
     from PIL import Image, ImageDraw
 
@@ -440,7 +444,9 @@ def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
 
     # 2. Valid DOCX
     doc = docx.Document()
-    doc.add_paragraph("A perfectly normal paragraph of English text long enough to clear length flags. " * 5)
+    doc.add_paragraph(
+        "A perfectly normal paragraph of English text long enough to clear length flags. " * 5
+    )
     buf_docx = io.BytesIO()
     doc.save(buf_docx)
 
@@ -492,10 +498,11 @@ def test_text_uploads_retain_encoding_checks(client, bucket):
     assert "encoding_suspect" in doc_latin1["quality"].get("flags", [])
 
     # Clean UTF-8 text should NOT receive encoding_suspect flag
-    clean_text = ("This is clean UTF-8 text that easily satisfies standard quality checks. " * 8).encode("utf-8")
+    clean_text = (
+        "This is clean UTF-8 text that easily satisfies standard quality checks. " * 8
+    ).encode("utf-8")
     res2 = upload(client, bucket, [("clean.txt", clean_text)])
     assert res2.status_code == 201
     doc_clean = client.get(f"/api/documents?bucket_id={bucket}&q=clean.txt").json()["items"][0]
     assert doc_clean["status"] == "parsed"
     assert "encoding_suspect" not in doc_clean["quality"].get("flags", [])
-

@@ -42,6 +42,7 @@ Optional dependencies:
 uv sync --project server --extra ocr
 uv sync --project server --extra converter
 uv sync --project server --extra train
+uv sync --project server --extra prepare
 ```
 
 Choose the extras you need. Combine flags to keep multiple extras installed. OCR models may download on first use.
@@ -58,7 +59,7 @@ See [server/forge/README.md](server/forge/README.md) for converter options and P
 
 ## Current Status
 
-Text snapshots now save cleaned documents into a ZIP with train.jsonl, validation.jsonl, and manifest.json. Splits use whole documents and a fixed seed. Downloads check the saved hashes, and snapshots keep working after source files are removed. Old dataset records without a ZIP need a new snapshot. Tokenization and training controls are next.
+Text snapshots now save cleaned documents into a ZIP with train.jsonl, validation.jsonl, and manifest.json. Splits use whole documents and a fixed seed. Downloads check the saved hashes, and snapshots keep working after source files are removed. Old dataset records without a ZIP need a new snapshot. The prepare extra learns a BPE vocabulary from the training split, writes checked token files, and lets you try the tokenizer. Model training controls are still planned.
 
 ## Running Tests
 
@@ -89,6 +90,12 @@ npm run build
 ## License
 
 Developed for CSC 450. All rights reserved by Group 6.
+
+## Prepare data
+
+Open Datasets, build a text snapshot, then choose Prepare data. The vocabulary learns from training documents only. The prepared ZIP holds train.bin, validation.bin, tokenizer.json, and manifest.json. Tokens use unsigned 16-bit integers in little-endian order. Token 0 marks the end of each document.
+
+This step uses the saved snapshot, even if its source files have changed or been deleted. Preparing is limited to 10 MB of text and 16,384 word pieces for now. The actual vocabulary can be smaller than requested. Install the prepare extra to use it. Model training is a later step.
 
 ## Sprint 6 dataset update
 

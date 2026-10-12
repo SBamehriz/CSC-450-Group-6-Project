@@ -130,4 +130,19 @@ export const api = {
     request<Dataset>('/datasets', { method: 'POST', body: JSON.stringify(payload) }),
   deleteDataset: (id: string) => request<void>(`/datasets/${id}`, { method: 'DELETE' }),
   datasetDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/download`,
+  preparationTools: () => request<components['schemas']['PrepareTools']>('/preparation/tools'),
+  getPrepared: (id: string) =>
+    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepared`),
+  prepareDataset: (id: string, vocabSize: number) =>
+    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepare`, {
+      method: 'POST',
+      body: JSON.stringify({ vocab_size: vocabSize }),
+    }),
+  deletePrepared: (id: string) => request<void>(`/datasets/${id}/prepared`, { method: 'DELETE' }),
+  previewTokens: (id: string, text: string) =>
+    request<components['schemas']['TokenPreview']>(`/datasets/${id}/prepared/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  preparedDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/prepared/download`,
 };

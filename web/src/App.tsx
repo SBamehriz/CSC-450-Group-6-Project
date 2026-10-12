@@ -5,6 +5,7 @@ import BucketDetailPage from './pages/BucketDetailPage';
 import BucketsPage from './pages/BucketsPage';
 import DatasetsPage from './pages/DatasetsPage';
 import OverviewPage from './pages/OverviewPage';
+import PreparedDataPage from './pages/PreparedDataPage';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/data" element={<BucketsPage />} />
         <Route path="/data/:bucketId" element={<BucketDetailPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
+        <Route path="/datasets/:datasetId/prepare" element={<PreparedDataPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

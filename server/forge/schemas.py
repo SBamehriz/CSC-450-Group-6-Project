@@ -189,6 +189,39 @@ class JobCreate(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class PrepareCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    vocab_size: int = Field(default=4096, ge=257, le=16384)
+
+
+class PrepareTools(BaseModel):
+    available: bool
+    max_text_mb: int
+
+
+class PreparedOut(BaseModel):
+    ready: bool
+    message: str = ""
+    vocab_size: int = 0
+    requested_vocab_size: int = 0
+    train_tokens: int = 0
+    validation_tokens: int = 0
+    trained_on_documents: int = 0
+    eos_id: int = 0
+    sha256: str = ""
+    snapshot_sha256: str = ""
+
+
+class TokenPreviewCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class TokenPreview(BaseModel):
+    token_count: int
+    ids: list[int]
+    pieces: list[str]
+
+
 class JobOut(BaseModel):
     id: uuid.UUID
     job_type: str

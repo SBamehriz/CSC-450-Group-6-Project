@@ -97,7 +97,9 @@ export default function DatasetsPage() {
             held aside to check it later. The split happens by whole document, with at least one in
             each file.
           </p>
-          <p>Snapshots contain text. Tokenization and model training come later.</p>
+          <p>
+            Snapshots contain text. Open Prepare data to learn word pieces and save token files.
+          </p>
         </div>
       ) : null}
       {buckets.error ? (
@@ -371,6 +373,11 @@ export default function DatasetsPage() {
                 <p className="hint">The manifest keeps each source document’s hash and split.</p>
               </details>
               <div className="collection-card-actions">
+                {dataset.download_ready ? (
+                  <Link className="btn btn-primary" to={`/datasets/${dataset.id}/prepare`}>
+                    Prepare data
+                  </Link>
+                ) : null}
                 {dataset.download_ready ? (
                   <a className="btn" href={api.datasetDownloadUrl(dataset.id)}>
                     Download ZIP

@@ -112,6 +112,19 @@ def download_dataset(
 
 @router.delete("/{dataset_id}", status_code=204)
 def delete_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session)) -> Response:
+    from forge.prepared_api import _prepare_lock
+
+    if not _prepare_lock.acquire(blocking=False):
+        raise ApiError(409, "busy", "Wait for preparation to finish before deleting a snapshot.")
+    try:
+        return _delete_dataset(dataset_id, session)
+    finally:
+        _prepare_lock.release()
+
+
+def _delete_dataset(dataset_id: uuid.UUID, session: Session) -> Response:
+    from forge.preparation import prepared_path
+
     dataset = _load_one(session, dataset_id)
     try:
         path = archive_path(dataset)
@@ -119,6 +132,7 @@ def delete_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session
         path = None
     session.delete(dataset)
     session.commit()
+    prepared_path(dataset).unlink(missing_ok=True)
     if path is not None:
         path.unlink(missing_ok=True)
     return Response(status_code=204)

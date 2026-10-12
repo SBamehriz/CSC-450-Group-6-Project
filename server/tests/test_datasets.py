@@ -205,3 +205,32 @@ def test_dataset_migration_schema_and_persistence(tmp_path: Path):
         assert reloaded.config["verified"] is True
 
     engine.dispose()
+def test_dataset_stores_training_validation_split(client, make_document):
+    bucket_res = client.post(
+        "/api/buckets",
+        json={"name": f"split-bucket-{uuid.uuid4().hex[:6]}"},
+    )
+    assert bucket_res.status_code == 201
+    bucket_id = bucket_res.json()["id"]
+
+    for _ in range(10):
+        make_document(bucket_id=uuid.UUID(bucket_id), chars=500, status="parsed")
+
+    ds_res = client.post(
+        "/api/datasets",
+        json={
+            "name": f"split-ds-{uuid.uuid4().hex[:6]}",
+            "bucket_id": bucket_id,
+            "description": "Sprint 6 validation split test",
+            "validation_fraction": 0.2,
+            "seed": 42,
+        },
+    )
+
+    assert ds_res.status_code == 201
+    dataset = ds_res.json()
+
+    assert dataset["doc_count"] == 10
+    assert dataset["config"]["validation_documents"] == 2
+    assert dataset["config"]["train_documents"] == 8
+    assert dataset["config"]["seed"] == 42

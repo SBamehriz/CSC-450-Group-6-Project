@@ -74,11 +74,11 @@ jobs:
       - run: uv sync --frozen
         working-directory: server
 
-      - run: python scripts/gen_api_types.py
+      - run: uv run --project server python scripts/gen_api_types.py
 
       - name: Fail if the committed types are stale
         run: |
           if ! git diff --exit-code -- web/src/api/types.ts; then
-            echo "::error::web/src/api/types.ts is out of date. Run python scripts/gen_api_types.py and commit the result."
+            echo "::error::web/src/api/types.ts is out of date. Run uv run --project server python scripts/gen_api_types.py and commit the result."
             exit 1
           fi

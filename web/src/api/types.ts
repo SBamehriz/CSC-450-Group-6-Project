@@ -197,6 +197,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/datasets/{dataset_id}/verify': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Verify Dataset */
+    get: operations['verify_dataset_api_datasets__dataset_id__verify_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/datasets/{dataset_id}/download': {
     parameters: {
       query?: never;
@@ -208,6 +225,126 @@ export interface paths {
     get: operations['download_dataset_api_datasets__dataset_id__download_get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/overview/stats': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Stats */
+    get: operations['get_stats_api_overview_stats_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/overview/recent-uploads': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recent Uploads */
+    get: operations['recent_uploads_api_overview_recent_uploads_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/preparation/tools': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Preparation Tools */
+    get: operations['preparation_tools_api_preparation_tools_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/datasets/{dataset_id}/prepared': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Prepared */
+    get: operations['get_prepared_api_datasets__dataset_id__prepared_get'];
+    put?: never;
+    post?: never;
+    /** Delete Prepared */
+    delete: operations['delete_prepared_api_datasets__dataset_id__prepared_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/datasets/{dataset_id}/prepare': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Prepare Dataset */
+    post: operations['prepare_dataset_api_datasets__dataset_id__prepare_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/datasets/{dataset_id}/prepared/download': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download Prepared */
+    get: operations['download_prepared_api_datasets__dataset_id__prepared_download_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/datasets/{dataset_id}/prepared/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview Tokens */
+    post: operations['preview_tokens_api_datasets__dataset_id__prepared_preview_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -331,6 +468,16 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /**
+       * Download Ready
+       * @default false
+       */
+      download_ready: boolean;
+      /**
+       * Readiness Note
+       * @default
+       */
+      readiness_note: string;
     };
     /** DocumentOut */
     DocumentOut: {
@@ -404,6 +551,33 @@ export interface components {
        */
       bucket_id: string;
     };
+    /** OverviewStats */
+    OverviewStats: {
+      /** Buckets */
+      buckets: number;
+      /** Documents */
+      documents: number;
+      /** Parsed Documents */
+      parsed_documents: number;
+      /** Failed Documents */
+      failed_documents: number;
+      /** Rejected Documents */
+      rejected_documents: number;
+      /** Pending Documents */
+      pending_documents: number;
+      /** Flagged Documents */
+      flagged_documents: number;
+      /** Chars */
+      chars: number;
+      /** Words */
+      words: number;
+      /** Est Tokens */
+      est_tokens: number;
+      /** Snapshots */
+      snapshots: number;
+      /** Ready Snapshots */
+      ready_snapshots: number;
+    };
     /** Page[BucketOut] */
     Page_BucketOut_: {
       /** Items */
@@ -425,6 +599,118 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** Page[RecentUpload] */
+    Page_RecentUpload_: {
+      /** Items */
+      items: components['schemas']['RecentUpload'][];
+      /** Total */
+      total: number;
+    };
+    /** PrepareCreate */
+    PrepareCreate: {
+      /**
+       * Vocab Size
+       * @default 4096
+       */
+      vocab_size: number;
+    };
+    /** PrepareTools */
+    PrepareTools: {
+      /** Available */
+      available: boolean;
+      /** Max Text Mb */
+      max_text_mb: number;
+    };
+    /** PreparedOut */
+    PreparedOut: {
+      /** Ready */
+      ready: boolean;
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /**
+       * Vocab Size
+       * @default 0
+       */
+      vocab_size: number;
+      /**
+       * Requested Vocab Size
+       * @default 0
+       */
+      requested_vocab_size: number;
+      /**
+       * Train Tokens
+       * @default 0
+       */
+      train_tokens: number;
+      /**
+       * Validation Tokens
+       * @default 0
+       */
+      validation_tokens: number;
+      /**
+       * Trained On Documents
+       * @default 0
+       */
+      trained_on_documents: number;
+      /**
+       * Eos Id
+       * @default 0
+       */
+      eos_id: number;
+      /**
+       * Sha256
+       * @default
+       */
+      sha256: string;
+      /**
+       * Snapshot Sha256
+       * @default
+       */
+      snapshot_sha256: string;
+    };
+    /** RecentUpload */
+    RecentUpload: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Bucket Id
+       * Format: uuid
+       */
+      bucket_id: string;
+      /** Filename */
+      filename: string;
+      /** Source Format */
+      source_format: string;
+      /** Source Note */
+      source_note: string;
+      /** Status */
+      status: string;
+      /** Error */
+      error: string | null;
+      /** Content Hash */
+      content_hash: string | null;
+      /** Char Count */
+      char_count: number;
+      /** Word Count */
+      word_count: number;
+      /** Quality */
+      quality: {
+        [key: string]: unknown;
+      };
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Bucket Name */
+      bucket_name: string;
+    };
     /** RejectDocument */
     RejectDocument: {
       /**
@@ -432,6 +718,37 @@ export interface components {
        * @default
        */
       reason: string;
+    };
+    /** SnapshotCheck */
+    SnapshotCheck: {
+      /** Valid */
+      valid: boolean;
+      /** Message */
+      message: string;
+      /**
+       * Train Documents
+       * @default 0
+       */
+      train_documents: number;
+      /**
+       * Validation Documents
+       * @default 0
+       */
+      validation_documents: number;
+    };
+    /** TokenPreview */
+    TokenPreview: {
+      /** Token Count */
+      token_count: number;
+      /** Ids */
+      ids: number[];
+      /** Pieces */
+      pieces: string[];
+    };
+    /** TokenPreviewCreate */
+    TokenPreviewCreate: {
+      /** Text */
+      text: string;
     };
     /**
      * UploadOutcome
@@ -896,6 +1213,8 @@ export interface operations {
   list_datasets_api_datasets_get: {
     parameters: {
       query?: {
+        bucket_id?: string | null;
+        status?: string | null;
         limit?: number;
         offset?: number;
       };
@@ -1018,6 +1337,37 @@ export interface operations {
       };
     };
   };
+  verify_dataset_api_datasets__dataset_id__verify_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SnapshotCheck'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   download_dataset_api_datasets__dataset_id__download_get: {
     parameters: {
       query?: never;
@@ -1035,6 +1385,237 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_stats_api_overview_stats_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['OverviewStats'];
+        };
+      };
+    };
+  };
+  recent_uploads_api_overview_recent_uploads_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_RecentUpload_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preparation_tools_api_preparation_tools_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PrepareTools'];
+        };
+      };
+    };
+  };
+  get_prepared_api_datasets__dataset_id__prepared_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PreparedOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_prepared_api_datasets__dataset_id__prepared_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  prepare_dataset_api_datasets__dataset_id__prepare_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PrepareCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PreparedOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  download_prepared_api_datasets__dataset_id__prepared_download_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preview_tokens_api_datasets__dataset_id__prepared_preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TokenPreviewCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TokenPreview'];
+        };
       };
       /** @description Validation Error */
       422: {

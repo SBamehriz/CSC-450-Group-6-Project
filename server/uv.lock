@@ -679,6 +679,9 @@ converter = [
 ocr = [
     { name = "rapidocr-onnxruntime" },
 ]
+prepare = [
+    { name = "tokenizers" },
+]
 train = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -707,11 +710,12 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "rapidocr-onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.4.0" },
     { name = "sqlalchemy", specifier = ">=2.0" },
+    { name = "tokenizers", marker = "extra == 'prepare'", specifier = ">=0.20,<0.24" },
     { name = "torch", marker = "extra == 'train'", specifier = ">=2.3" },
     { name = "trafilatura", specifier = ">=1.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["train", "converter", "ocr"]
+provides-extras = ["prepare", "train", "converter", "ocr"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -504,7 +504,7 @@ def test_convert_file_pdf_fixture_metadata():
 
 
 def test_convert_file_image_png_fixture_metadata(monkeypatch):
-    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Fixture image text")
+    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Docling Image OCR")
     png_fixture = FIXTURES / "sample.png"
     assert png_fixture.is_file()
 
@@ -519,12 +519,10 @@ def test_convert_file_image_png_fixture_metadata(monkeypatch):
     assert meta["height"] == 100
 
 
-def test_convert_file_image_jpg_fixture_metadata(monkeypatch, tmp_path):
-    from PIL import Image
-
-    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Fixture image text")
-    jpg_fixture = tmp_path / "sample.jpg"
-    Image.new("RGB", (1, 1), color="white").save(jpg_fixture, format="JPEG")
+def test_convert_file_image_jpg_fixture_metadata(monkeypatch):
+    monkeypatch.setattr("forge.ocr.ocr_image", lambda *_args, **_kwargs: "Invoice JPG Scan 2026")
+    jpg_fixture = FIXTURES / "sample.jpg"
+    assert jpg_fixture.is_file()
 
     record = convert_file(jpg_fixture, include_metadata=True)
     assert record["filename"] == "sample.jpg"

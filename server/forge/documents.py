@@ -122,7 +122,16 @@ def upload_documents(
                 )
             )
             continue
-        outcomes.extend(_ingest_one(session, bucket_id, name, raw, source_note))
+        outcomes.extend(
+            _ingest_one(
+                session,
+                bucket_id,
+                name,
+                raw,
+                source_note,
+                content_type=upload.content_type,
+            )
+        )
 
     session.commit()
     parsed = sum(1 for outcome in outcomes if outcome.status == "parsed")
@@ -130,7 +139,12 @@ def upload_documents(
 
 
 def _ingest_one(
-    session: Session, bucket_id: uuid.UUID, name: str, raw: bytes, source_note: str
+    session: Session,
+    bucket_id: uuid.UUID,
+    name: str,
+    raw: bytes,
+    source_note: str,
+    content_type: str | None = None,
 ) -> list[UploadOutcome]:
     try:
         pieces = parse(name, raw)
@@ -138,7 +152,7 @@ def _ingest_one(
         document = Document(
             bucket_id=bucket_id,
             filename=name,
-            source_format=_stored_format(name),
+            source_format=_stored_format(name, content_type=content_type),
             source_note=source_note,
             raw_uri=_write(f"raw/{uuid.uuid4()}", raw),
             status="failed",
@@ -149,18 +163,22 @@ def _ingest_one(
         session.flush()
         return [UploadOutcome(filename=name, status="failed", error=str(problem))]
 
-    suspect = looks_mis_decoded(raw, filename=name)
+    suspect = looks_mis_decoded(raw, filename=name, content_type=content_type)
     raw_uri = _write(f"raw/{uuid.uuid4()}", raw)
     outcomes: list[UploadOutcome] = []
 
     for piece in pieces:
-        piece_fmt = _stored_format(piece.filename)
-        piece_is_binary = piece_fmt in ("pdf", "docx", "image") or is_binary_format(name)
+        piece_fmt = _stored_format(piece.filename, content_type=content_type)
+        piece_is_binary = (
+            piece_fmt in ("pdf", "docx", "image")
+            or is_binary_format(name, content_type=content_type)
+            or is_binary_format(piece.filename)
+        )
         cleaned = clean(piece.text, encoding_suspect=False if piece_is_binary else suspect)
 
         fmt = piece_fmt
         if fmt == "other":
-            fmt = _stored_format(name)
+            fmt = _stored_format(name, content_type=content_type)
 
         doc_quality = dict(cleaned.quality)
         if getattr(piece, "metadata", None):
@@ -212,7 +230,18 @@ def _ingest_one(
     return outcomes
 
 
-def _stored_format(filename: str) -> str:
+def _stored_format(filename: str, content_type: str | None = None) -> str:
+    if content_type:
+        ct = content_type.lower().split(";")[0].strip()
+        if ct.startswith("image/"):
+            return "image"
+        if ct == "application/pdf":
+            return "pdf"
+        if ct in (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword",
+        ):
+            return "docx"
     extension, _ = split_extension(filename)
     extension = "html" if extension == "htm" else extension  # treat htm like html
     if extension in ("txt", "md", "html", "pdf", "docx", "jsonl"):

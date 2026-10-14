@@ -121,11 +121,15 @@ def test_an_unsupported_file_records_as_other(client, bucket):
 
 def test_upload_valid_docx_and_image(client, bucket):
     import io
+
     import docx
     from PIL import Image, ImageDraw
 
     doc = docx.Document()
-    doc.add_paragraph("A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5)
+    valid_paragraph = (
+        "A perfectly valid docx paragraph long enough to pass cleaning standards. " * 5
+    )
+    doc.add_paragraph(valid_paragraph)
     buf_docx = io.BytesIO()
     doc.save(buf_docx)
 
@@ -432,6 +436,7 @@ def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
 
 def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
     import io
+
     import docx
     from PIL import Image, ImageDraw
 
@@ -440,7 +445,8 @@ def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
 
     # 2. Valid DOCX
     doc = docx.Document()
-    doc.add_paragraph("A perfectly normal paragraph of English text long enough to clear length flags. " * 5)
+    para = "A perfectly normal paragraph of English text long enough to clear length flags. " * 5
+    doc.add_paragraph(para)
     buf_docx = io.BytesIO()
     doc.save(buf_docx)
 
@@ -458,23 +464,30 @@ def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
     buf_jpg = io.BytesIO()
     img_jpg.save(buf_jpg, format="JPEG")
 
-    res = upload(
-        client,
-        bucket,
-        [
-            ("valid.pdf", pdf_bytes),
-            ("valid.docx", buf_docx.getvalue()),
-            ("valid.png", buf_png.getvalue()),
-            ("valid.jpg", buf_jpg.getvalue()),
-        ],
-    )
+    # 5. Valid JPEG (alternate extension with distinct text for deduplication)
+    img_jpeg = Image.new("RGB", (320, 100), color="white")
+    d3 = ImageDraw.Draw(img_jpeg)
+    d3.text((10, 30), "Order JPEG Scan 2026", fill="black")
+    buf_jpeg = io.BytesIO()
+    img_jpeg.save(buf_jpeg, format="JPEG")
+
+    # Upload batch with explicit MIME types and both .jpg and .jpeg extensions
+    docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    payload = [
+        ("files", ("valid.pdf", pdf_bytes, "application/pdf")),
+        ("files", ("valid.docx", buf_docx.getvalue(), docx_mime)),
+        ("files", ("valid.png", buf_png.getvalue(), "image/png")),
+        ("files", ("valid.jpg", buf_jpg.getvalue(), "image/jpeg")),
+        ("files", ("valid.jpeg", buf_jpeg.getvalue(), "image/jpeg")),
+    ]
+    res = client.post(f"/api/buckets/{bucket}/documents", files=payload)
     assert res.status_code == 201
     body = res.json()
-    assert body["parsed"] == 4
+    assert body["parsed"] == 5
     assert body["failed"] == 0
 
     docs = client.get(f"/api/documents?bucket_id={bucket}").json()["items"]
-    assert len(docs) == 4
+    assert len(docs) == 5
     for doc_item in docs:
         flags = doc_item["quality"].get("flags", [])
         assert "encoding_suspect" not in flags, (
@@ -492,10 +505,9 @@ def test_text_uploads_retain_encoding_checks(client, bucket):
     assert "encoding_suspect" in doc_latin1["quality"].get("flags", [])
 
     # Clean UTF-8 text should NOT receive encoding_suspect flag
-    clean_text = ("This is clean UTF-8 text that easily satisfies standard quality checks. " * 8).encode("utf-8")
+    clean_text = b"This is clean UTF-8 text that easily satisfies standard quality checks. " * 8
     res2 = upload(client, bucket, [("clean.txt", clean_text)])
     assert res2.status_code == 201
     doc_clean = client.get(f"/api/documents?bucket_id={bucket}&q=clean.txt").json()["items"][0]
     assert doc_clean["status"] == "parsed"
     assert "encoding_suspect" not in doc_clean["quality"].get("flags", [])
-

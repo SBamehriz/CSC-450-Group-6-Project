@@ -55,7 +55,7 @@ DATASET_STATUSES = ("draft", "processing", "ready", "failed")
 JOB_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 JOB_TYPES = ("tokenization", "training", "eval", "ingest", "export")
 RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
-MODEL_PRESETS = ("nano", "micro", "small", "custom")
+MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:

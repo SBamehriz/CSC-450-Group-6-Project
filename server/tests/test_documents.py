@@ -7,9 +7,13 @@ from pathlib import Path
 import pytest
 
 from forge import documents as documents_router
+from forge.ocr import is_ocr_available
 from tests.conftest import ARTICLE_PDF, NOTES_MD, SCANNED_PDF
 
 FIXTURES = Path(__file__).parent / "fixtures"
+requires_ocr = pytest.mark.skipif(
+    not is_ocr_available(), reason="Install the ocr extra to test image uploads"
+)
 
 TEXT = b"A perfectly ordinary paragraph of English prose, long enough to clear the flags. " * 12
 
@@ -119,6 +123,7 @@ def test_an_unsupported_file_records_as_other(client, bucket):
     assert document["status"] == "failed"
 
 
+@requires_ocr
 def test_upload_valid_docx_and_image(client, bucket):
     import io
 
@@ -434,6 +439,7 @@ def test_upload_converter_json_dataset_preserves_source_formats(client, bucket):
     assert all(d["content_hash"] for d in docs)
 
 
+@requires_ocr
 def test_binary_uploads_do_not_receive_encoding_suspect(client, bucket):
     import io
 

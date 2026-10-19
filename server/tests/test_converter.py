@@ -33,7 +33,6 @@ from forge.ocr import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
-DESKTOP_INPUTS = Path(r"C:\Users\PSK\Desktop\pdf-docx-to-json\input_files")
 requires_ocr = pytest.mark.skipif(
     not is_ocr_available(), reason="Install the ocr extra to test OCR"
 )
@@ -174,15 +173,14 @@ def test_convert_bytes_image_with_ocr():
 
 
 @pytest.mark.slow
-def test_docling_docx_conversion_if_sample_exists():
-    docx_sample = DESKTOP_INPUTS / "sample.docx"
-    if not docx_sample.is_file():
-        pytest.skip(f"Sample docx not found at {docx_sample}")
+def test_docx_conversion_of_the_fixture_sample():
+    docx_sample = FIXTURES / "sample.docx"
+    assert docx_sample.is_file()
 
     record = convert_file(docx_sample)
     assert record["filename"] == "sample.docx"
     assert len(record["text"]) > 0
-    assert "Sample Word Document" in record["text"]
+    assert "Forge Architecture Overview" in record["text"]
 
 
 def test_convert_to_cleaned(tmp_path: Path):

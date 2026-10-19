@@ -446,9 +446,7 @@ def parse_image_with_metadata(
                 "image_format": img.format or Path(filename).suffix.lstrip(".").upper(),
             }
     except Exception as problem:
-        raise ParseError(
-            f"Image file {filename!r} is damaged or invalid: {problem}"
-        ) from problem
+        raise ParseError(f"Image file {filename!r} is damaged or invalid: {problem}") from problem
 
     try:
         text = ocr_image(raw, filename=filename)

@@ -24,7 +24,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: server/uv.lock
 
-      - run: uv sync --frozen
+      - run: uv sync --frozen --extra prepare
 
       - name: Install torch (CPU build)
         run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu

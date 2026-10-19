@@ -20,6 +20,8 @@ class TrainingJobCreate(BaseModel):
     preset: str
     learning_rate: float = Field(default=0.001, gt=0)
     epochs: int = Field(default=1, ge=1, le=100)
+
+
 @router.post("/jobs", status_code=201)
 def create_training_job(
     payload: TrainingJobCreate,
@@ -63,6 +65,7 @@ def create_training_job(
         "id": str(job.id),
         "status": job.status,
     }
+
 
 @router.get("/presets", response_model=list[PresetOut])
 def list_presets() -> list[PresetOut]:

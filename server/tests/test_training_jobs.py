@@ -1,4 +1,3 @@
-
 import uuid
 
 from forge.models import Job
@@ -27,6 +26,7 @@ def test_create_training_job(client, db, make_dataset):
     assert job is not None
     assert job.job_type == "training"
     assert job.status == "pending"
+
 
 def test_training_job_invalid_dataset(client):
     response = client.post(

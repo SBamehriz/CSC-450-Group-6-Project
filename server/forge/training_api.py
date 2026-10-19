@@ -1,13 +1,14 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from forge import gpu
 from forge.db import get_session
 from forge.models import Dataset, Job
-from forge import gpu
 from forge.schemas import GpuCard, GpuCheck, PresetMemory, PresetOut
 from forge.train.presets import PRESETS, count_params, training_memory
-from uuid import UUID
-from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["training"])
 

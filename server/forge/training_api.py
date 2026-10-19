@@ -1,13 +1,67 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from forge.db import get_session
+from forge.models import Dataset, Job
 from forge import gpu
 from forge.schemas import GpuCard, GpuCheck, PresetMemory, PresetOut
 from forge.train.presets import PRESETS, count_params, training_memory
+from uuid import UUID
+from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["training"])
 
 SEQUENCES_PER_STEP = (1, 2, 4, 8, 16)
 
+
+class TrainingJobCreate(BaseModel):
+    dataset_id: UUID
+    preset: str
+    learning_rate: float = Field(default=0.001, gt=0)
+    epochs: int = Field(default=1, ge=1, le=100)
+@router.post("/jobs", status_code=201)
+def create_training_job(
+    payload: TrainingJobCreate,
+    session: Session = Depends(get_session),
+):
+    dataset = session.get(Dataset, payload.dataset_id)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found",
+        )
+
+    if payload.preset not in PRESETS:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid training preset",
+        )
+
+    job = Job(
+        job_type="training",
+        status="pending",
+        payload={
+            "dataset_id": str(payload.dataset_id),
+            "preset": payload.preset,
+            "learning_rate": payload.learning_rate,
+            "epochs": payload.epochs,
+        },
+    )
+
+    session.add(job)
+
+    try:
+        session.commit()
+        session.refresh(job)
+    except Exception:
+        session.rollback()
+        raise
+
+    return {
+        "id": str(job.id),
+        "status": job.status,
+    }
 
 @router.get("/presets", response_model=list[PresetOut])
 def list_presets() -> list[PresetOut]:

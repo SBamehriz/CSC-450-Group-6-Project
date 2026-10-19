@@ -29,3 +29,8 @@ export function relativeDate(iso: string, now: Date = new Date()): string {
   if (days < 30) return `${days}d ago`;
   return then.toLocaleDateString();
 }
+
+export function gigabytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) return 'None';
+  return `${(bytes / 2 ** 30).toFixed(1)} GB`;
+}

@@ -9,6 +9,7 @@ const LINKS = [
   { to: '/', label: 'Overview', icon: 'home' },
   { to: '/data', label: 'Collections', icon: 'data' },
   { to: '/datasets', label: 'Datasets', icon: 'snapshot' },
+  { to: '/models', label: 'Models', icon: 'model' },
 ] as const;
 
 export default function Layout({ children }: { children: ReactNode }) {

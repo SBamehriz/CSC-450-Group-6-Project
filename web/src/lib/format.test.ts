@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { compactNumber, plural, relativeDate } from './format';
+import { compactNumber, gigabytes, plural, relativeDate } from './format';
 
 describe('compactNumber', () => {
   it('leaves small numbers alone', () => {
@@ -49,5 +49,13 @@ describe('relativeDate', () => {
 
   it('handles an invalid date', () => {
     expect(relativeDate('not a date', now)).toBe('None');
+  });
+});
+
+describe('gigabytes', () => {
+  it('shows memory in gigabytes with one decimal', () => {
+    expect(gigabytes(24576 * 2 ** 20)).toBe('24.0 GB');
+    expect(gigabytes(8_290_856_704)).toBe('7.7 GB');
+    expect(gigabytes(NaN)).toBe('None');
   });
 });

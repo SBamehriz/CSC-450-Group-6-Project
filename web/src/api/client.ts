@@ -11,6 +11,8 @@ export type Dataset = components['schemas']['DatasetOut'];
 export type DatasetCreate = components['schemas']['DatasetCreate'];
 export type OverviewStats = components['schemas']['OverviewStats'];
 export type RecentUpload = components['schemas']['RecentUpload'];
+export type Preset = components['schemas']['PresetOut'];
+export type GpuCheck = components['schemas']['GpuCheck'];
 
 export const DOCUMENT_PAGE = 50;
 
@@ -145,4 +147,6 @@ export const api = {
       body: JSON.stringify({ text }),
     }),
   preparedDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/prepared/download`,
+  listPresets: () => request<Preset[]>('/presets'),
+  checkGpu: () => request<GpuCheck>('/gpu'),
 };

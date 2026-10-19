@@ -12,7 +12,7 @@ Forge reads uploaded files, cleans their text, and organizes documents into coll
 - **Document Review**: Search, filter, preview, move, reject, and delete documents.
 - **Dashboard**: View collection totals, quality flags, and recent activity in a maroon interface.
 - **Optional OCR**: Read images and scanned PDFs with RapidOCR, Docling, or a configured Tesseract setup.
-- **Model Benchmarks**: Test speed and memory with the nano, micro, and small presets.
+- **Model Sizes**: See the nano, micro, small, large, and 135m sizes, the memory each needs to train, and which fit this computer's graphics card.
 
 ## Supported Formats
 
@@ -59,7 +59,7 @@ See [server/forge/README.md](server/forge/README.md) for converter options and P
 
 ## Current Status
 
-Text snapshots now save cleaned documents into a ZIP with train.jsonl, validation.jsonl, and manifest.json. Splits use whole documents and a fixed seed. Downloads check the saved hashes, and snapshots keep working after source files are removed. Old dataset records without a ZIP need a new snapshot. The prepare extra learns a BPE vocabulary from the training split, writes checked token files, and lets you try the tokenizer. Model training controls are still planned.
+Text snapshots now save cleaned documents into a ZIP with train.jsonl, validation.jsonl, and manifest.json. Splits use whole documents and a fixed seed. Downloads check the saved hashes, and snapshots keep working after source files are removed. Old dataset records without a ZIP need a new snapshot. The prepare extra learns a BPE vocabulary from the training split, writes checked token files, and lets you try the tokenizer. The model now comes in five sizes, from nano (about 3M parameters) to 135m (about 134M parameters, 17 blocks, 768 wide, a context of 1,024). The Models page lists every size with its parameter count and the graphics card memory training it needs, and checks this computer's own card: its name, memory, driver, and whether PyTorch can use it. Each size is marked as fitting that card or not, so the answer changes with the machine. Model training controls are still planned.
 
 ## Running Tests
 

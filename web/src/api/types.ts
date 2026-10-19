@@ -351,6 +351,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/presets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Presets */
+    get: operations['list_presets_api_presets_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/gpu': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check Gpu */
+    get: operations['check_gpu_api_gpu_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -531,6 +565,35 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** GpuCard */
+    GpuCard: {
+      /** Index */
+      index: number;
+      /** Name */
+      name: string;
+      /** Memory Bytes */
+      memory_bytes: number;
+      /** Driver */
+      driver: string;
+      /** Compute Capability */
+      compute_capability: string;
+    };
+    /** GpuCheck */
+    GpuCheck: {
+      /** Cards */
+      cards: components['schemas']['GpuCard'][];
+      /** Tool Said */
+      tool_said: string | null;
+      /**
+       * Torch
+       * @enum {string}
+       */
+      torch: 'cuda' | 'rocm' | 'cpu' | 'missing' | 'unknown';
+      /** Torch Version */
+      torch_version: string | null;
+      /** Torch Cuda */
+      torch_cuda: string | null;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -670,6 +733,32 @@ export interface components {
        * @default
        */
       snapshot_sha256: string;
+    };
+    /** PresetMemory */
+    PresetMemory: {
+      /** Sequences Per Step */
+      sequences_per_step: number;
+      /** Bytes */
+      bytes: number;
+    };
+    /** PresetOut */
+    PresetOut: {
+      /** Name */
+      name: string;
+      /** N Layer */
+      n_layer: number;
+      /** D Model */
+      d_model: number;
+      /** N Head */
+      n_head: number;
+      /** Ctx Len */
+      ctx_len: number;
+      /** Vocab Size */
+      vocab_size: number;
+      /** Parameters */
+      parameters: number;
+      /** Memory */
+      memory: components['schemas']['PresetMemory'][];
     };
     /** RecentUpload */
     RecentUpload: {
@@ -1624,6 +1713,46 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_presets_api_presets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PresetOut'][];
+        };
+      };
+    };
+  };
+  check_gpu_api_gpu_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GpuCheck'];
         };
       };
     };

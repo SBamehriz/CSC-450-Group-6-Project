@@ -1365,6 +1365,9 @@ textarea.input {
   .wordmark span {
     display: none;
   }
+  .nav .icon {
+    display: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,

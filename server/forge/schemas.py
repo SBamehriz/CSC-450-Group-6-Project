@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -220,6 +220,38 @@ class TokenPreview(BaseModel):
     token_count: int
     ids: list[int]
     pieces: list[str]
+
+
+class PresetMemory(BaseModel):
+    sequences_per_step: int
+    bytes: int
+
+
+class PresetOut(BaseModel):
+    name: str
+    n_layer: int
+    d_model: int
+    n_head: int
+    ctx_len: int
+    vocab_size: int
+    parameters: int
+    memory: list[PresetMemory]
+
+
+class GpuCard(BaseModel):
+    index: int
+    name: str
+    memory_bytes: int
+    driver: str
+    compute_capability: str
+
+
+class GpuCheck(BaseModel):
+    cards: list[GpuCard]
+    tool_said: str | None
+    torch: Literal["cuda", "rocm", "cpu", "missing", "unknown"]
+    torch_version: str | None
+    torch_cuda: str | None
 
 
 class JobOut(BaseModel):

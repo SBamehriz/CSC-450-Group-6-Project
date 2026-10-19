@@ -351,6 +351,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/jobs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Training Job */
+    post: operations['create_training_job_api_jobs_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/presets': {
     parameters: {
       query?: never;
@@ -838,6 +855,26 @@ export interface components {
     TokenPreviewCreate: {
       /** Text */
       text: string;
+    };
+    /** TrainingJobCreate */
+    TrainingJobCreate: {
+      /**
+       * Dataset Id
+       * Format: uuid
+       */
+      dataset_id: string;
+      /** Preset */
+      preset: string;
+      /**
+       * Learning Rate
+       * @default 0.001
+       */
+      learning_rate: number;
+      /**
+       * Epochs
+       * @default 1
+       */
+      epochs: number;
     };
     /**
      * UploadOutcome
@@ -1704,6 +1741,39 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['TokenPreview'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_training_job_api_jobs_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TrainingJobCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
         };
       };
       /** @description Validation Error */

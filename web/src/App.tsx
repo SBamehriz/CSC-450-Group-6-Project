@@ -7,6 +7,8 @@ import DatasetsPage from './pages/DatasetsPage';
 import ModelsPage from './pages/ModelsPage';
 import OverviewPage from './pages/OverviewPage';
 import PreparedDataPage from './pages/PreparedDataPage';
+import RunDetailPage from './pages/RunDetailPage';
+import TrainingHistoryPage from './pages/TrainingHistoryPage';
 
 export default function App() {
   return (
@@ -18,6 +20,8 @@ export default function App() {
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/datasets/:datasetId/prepare" element={<PreparedDataPage />} />
         <Route path="/models" element={<ModelsPage />} />
+        <Route path="/history" element={<TrainingHistoryPage />} />
+        <Route path="/runs/:runId" element={<RunDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

@@ -39,6 +39,12 @@ def get_session() -> Iterator[Session]:
         session.close()
 
 
+def open_session() -> Session:
+    get_engine()
+    assert _SessionLocal is not None
+    return _SessionLocal()
+
+
 def reset_engine() -> None:
     # tests switch db files mid-run
     global _engine, _SessionLocal

@@ -87,11 +87,14 @@ MATH_ATTENTION_BYTES = 7
 CUDA_CONTEXT_BYTES = 500_000_000
 
 
+ALLOWED_CTX = (256, 512, 1024)
+
+
 def activation_bytes_per_token(hidden: int, intermediate: int) -> int:
     return 18 * hidden + 4 * intermediate
 
 
-def training_memory(config: ModelConfig, micro_batch_seqs: int) -> dict[str, int]:
+def training_memory(config: ModelConfig, micro_batch_seqs: int = 8) -> dict[str, int]:
     tokens = micro_batch_seqs * config.ctx_len
     d = config.d_model
     block = activation_bytes_per_token(d, 4 * d)
@@ -104,6 +107,42 @@ def training_memory(config: ModelConfig, micro_batch_seqs: int) -> dict[str, int
         "logits": LOGIT_BYTES * tokens * config.vocab_size,
         "cuda_context": CUDA_CONTEXT_BYTES,
     }
+
+
+def estimate_vram_bytes(config: ModelConfig, micro_batch_seqs: int = 8) -> int:
+    """Estimated total training memory in bytes."""
+    return sum(training_memory(config, micro_batch_seqs).values())
+
+
+def explain_shape_error(
+    n_layer: int,
+    d_model: int,
+    n_head: int,
+    ctx_len: int,
+    vocab_size: int = 16384,
+    dropout: float = 0.0,
+) -> str | None:
+    """Explains why a model configuration shape is invalid in plain language."""
+    if n_head <= 0:
+        return "Number of attention heads must be at least 1."
+    if d_model % n_head != 0:
+        head_dim = d_model / n_head
+        return (
+            f"Model width ({d_model}) must divide evenly by attention heads ({n_head}). "
+            f"Each head would get {head_dim:.1f} dimensions, but head dimensions must be integers."
+        )
+    if not 1 <= n_layer <= MAX_N_LAYER:
+        return f"Layer count (blocks) must be between 1 and {MAX_N_LAYER} (got {n_layer})."
+    if not 1 <= d_model <= MAX_D_MODEL:
+        return f"Model width (d_model) must be between 1 and {MAX_D_MODEL} (got {d_model})."
+    if ctx_len not in ALLOWED_CTX:
+        allowed = ", ".join(str(c) for c in ALLOWED_CTX)
+        return f"Context length must be one of {allowed} tokens (got {ctx_len})."
+    if not 0.0 <= dropout <= MAX_DROPOUT:
+        return f"Dropout must be between 0.0 and {MAX_DROPOUT} (got {dropout})."
+    if vocab_size < 2:
+        return f"Vocabulary size must be at least 2 tokens (got {vocab_size})."
+    return None
 
 
 def describe(config: ModelConfig) -> str:

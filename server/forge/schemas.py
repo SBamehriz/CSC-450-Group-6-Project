@@ -270,6 +270,7 @@ class ModelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
     preset: str | None = None
+    dataset_id: uuid.UUID | None = None
     n_layer: int = Field(ge=1, le=12)
     d_model: int = Field(ge=1, le=768)
     n_head: int = Field(ge=1)
@@ -277,6 +278,35 @@ class ModelCreate(BaseModel):
     vocab_size: int = 16384
     dropout: float = Field(default=0.0, ge=0.0, le=0.5)
     config: dict = Field(default_factory=dict)
+
+
+class ModelPreviewRequest(BaseModel):
+    preset: str | None = None
+    dataset_id: uuid.UUID | None = None
+    n_layer: int = Field(default=4, ge=1, le=12)
+    d_model: int = Field(default=128, ge=1, le=768)
+    n_head: int = Field(default=4, ge=1)
+    ctx_len: int = Field(default=512)
+    vocab_size: int | None = None
+    dropout: float = Field(default=0.0, ge=0.0, le=0.5)
+
+
+class ModelPreviewOut(BaseModel):
+    valid: bool
+    param_count: int = 0
+    estimated_memory_bytes: int = 0
+    estimated_memory_mb: float = 0.0
+    vocab_size: int = 0
+    error: str | None = None
+
+
+class VocabularyOut(BaseModel):
+    dataset_id: uuid.UUID
+    dataset_name: str
+    vocab_size: int
+    requested_vocab_size: int
+    train_tokens: int
+    trained_on_documents: int
 
 
 class ModelOut(BaseModel):
@@ -292,6 +322,7 @@ class ModelOut(BaseModel):
     dropout: float
     param_count: int
     config: dict
+    estimated_memory_bytes: int | None = None
     created_at: datetime
 
 
@@ -310,7 +341,10 @@ class RunOut(BaseModel):
     id: uuid.UUID
     name: str
     model_id: uuid.UUID
+    model_name: str | None = None
+    model_preset: str | None = None
     dataset_id: uuid.UUID | None
+    dataset_name: str | None = None
     status: str
     device: str
     batch_size: int
@@ -319,6 +353,7 @@ class RunOut(BaseModel):
     current_step: int
     loss: float | None
     eval_loss: float | None
+    best_val_loss: float | None = None
     tokens_per_sec: float | None
     metrics: dict
     hyperparams: dict
@@ -340,3 +375,21 @@ class CheckpointOut(BaseModel):
     is_best: bool
     metrics: dict
     created_at: datetime
+
+
+class MetricPointOut(BaseModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    step: int
+    loss: float | None
+    val_loss: float | None
+    learning_rate: float | None
+    speed: float | None
+    tokens_per_sec: float | None = None
+    created_at: datetime
+
+
+class RunMetricsOut(BaseModel):
+    run_id: uuid.UUID
+    items: list[MetricPointOut]
+    total: int

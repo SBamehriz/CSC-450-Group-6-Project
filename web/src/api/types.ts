@@ -385,6 +385,182 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/models/presets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Presets
+     * @description Return model preset shapes and validation boundaries.
+     */
+    get: operations['get_presets_api_models_presets_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/models/vocabularies': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Vocabularies
+     * @description List available vocabularies learned from prepared datasets.
+     */
+    get: operations['list_vocabularies_api_models_vocabularies_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/models/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Model Shape
+     * @description Preview model parameter count and estimated memory before saving.
+     */
+    post: operations['preview_model_shape_api_models_preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/models': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Models
+     * @description List saved models, newest first, with stable pagination.
+     */
+    get: operations['list_models_api_models_get'];
+    put?: never;
+    /**
+     * Create Model
+     * @description Create and save a new model configuration.
+     */
+    post: operations['create_model_api_models_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/models/{model_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Model
+     * @description Retrieve a saved model by ID.
+     */
+    get: operations['get_model_api_models__model_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Model
+     * @description Delete a saved model only if no training run references it.
+     */
+    delete: operations['delete_model_api_models__model_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Runs
+     * @description List training runs newest first, with stable pagination.
+     */
+    get: operations['list_runs_api_runs_get'];
+    put?: never;
+    /**
+     * Create Run
+     * @description Create a new training run record.
+     */
+    post: operations['create_run_api_runs_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Run
+     * @description Get detailed information for a single training run.
+     */
+    get: operations['get_run_api_runs__run_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Run
+     * @description Delete a run only when no dependent result requires it.
+     */
+    delete: operations['delete_run_api_runs__run_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}/metrics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Run Metrics
+     * @description Retrieve chronologically ordered metric points for chart display.
+     */
+    get: operations['get_run_metrics_api_runs__run_id__metrics_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -606,6 +782,172 @@ export interface components {
       /** Database */
       database: string;
     };
+    /** MetricPointOut */
+    MetricPointOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /** Step */
+      step: number;
+      /** Loss */
+      loss: number | null;
+      /** Val Loss */
+      val_loss: number | null;
+      /** Learning Rate */
+      learning_rate: number | null;
+      /** Speed */
+      speed: number | null;
+      /** Tokens Per Sec */
+      tokens_per_sec?: number | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
+    /** ModelCreate */
+    ModelCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Preset */
+      preset?: string | null;
+      /** Dataset Id */
+      dataset_id?: string | null;
+      /** N Layer */
+      n_layer: number;
+      /** D Model */
+      d_model: number;
+      /** N Head */
+      n_head: number;
+      /** Ctx Len */
+      ctx_len: number;
+      /**
+       * Vocab Size
+       * @default 16384
+       */
+      vocab_size: number;
+      /**
+       * Dropout
+       * @default 0
+       */
+      dropout: number;
+      /** Config */
+      config?: {
+        [key: string]: unknown;
+      };
+    };
+    /** ModelOut */
+    ModelOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Description */
+      description: string;
+      /** Preset */
+      preset: string | null;
+      /** N Layer */
+      n_layer: number;
+      /** D Model */
+      d_model: number;
+      /** N Head */
+      n_head: number;
+      /** Ctx Len */
+      ctx_len: number;
+      /** Vocab Size */
+      vocab_size: number;
+      /** Dropout */
+      dropout: number;
+      /** Param Count */
+      param_count: number;
+      /** Config */
+      config: {
+        [key: string]: unknown;
+      };
+      /** Estimated Memory Bytes */
+      estimated_memory_bytes?: number | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
+    /** ModelPreviewOut */
+    ModelPreviewOut: {
+      /** Valid */
+      valid: boolean;
+      /**
+       * Param Count
+       * @default 0
+       */
+      param_count: number;
+      /**
+       * Estimated Memory Bytes
+       * @default 0
+       */
+      estimated_memory_bytes: number;
+      /**
+       * Estimated Memory Mb
+       * @default 0
+       */
+      estimated_memory_mb: number;
+      /**
+       * Vocab Size
+       * @default 0
+       */
+      vocab_size: number;
+      /** Error */
+      error?: string | null;
+    };
+    /** ModelPreviewRequest */
+    ModelPreviewRequest: {
+      /** Preset */
+      preset?: string | null;
+      /** Dataset Id */
+      dataset_id?: string | null;
+      /**
+       * N Layer
+       * @default 4
+       */
+      n_layer: number;
+      /**
+       * D Model
+       * @default 128
+       */
+      d_model: number;
+      /**
+       * N Head
+       * @default 4
+       */
+      n_head: number;
+      /**
+       * Ctx Len
+       * @default 512
+       */
+      ctx_len: number;
+      /** Vocab Size */
+      vocab_size?: number | null;
+      /**
+       * Dropout
+       * @default 0
+       */
+      dropout: number;
+    };
     /** MoveDocument */
     MoveDocument: {
       /**
@@ -662,10 +1004,24 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** Page[ModelOut] */
+    Page_ModelOut_: {
+      /** Items */
+      items: components['schemas']['ModelOut'][];
+      /** Total */
+      total: number;
+    };
     /** Page[RecentUpload] */
     Page_RecentUpload_: {
       /** Items */
       items: components['schemas']['RecentUpload'][];
+      /** Total */
+      total: number;
+    };
+    /** Page[RunOut] */
+    Page_RunOut_: {
+      /** Items */
+      items: components['schemas']['RunOut'][];
       /** Total */
       total: number;
     };
@@ -808,6 +1164,116 @@ export interface components {
        */
       reason: string;
     };
+    /** RunCreate */
+    RunCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /** Dataset Id */
+      dataset_id?: string | null;
+      /**
+       * Device
+       * @default cpu
+       */
+      device: string;
+      /**
+       * Batch Size
+       * @default 1
+       */
+      batch_size: number;
+      /**
+       * Learning Rate
+       * @default 0.001
+       */
+      learning_rate: number;
+      /**
+       * Max Steps
+       * @default 1000
+       */
+      max_steps: number;
+      /** Hyperparams */
+      hyperparams?: {
+        [key: string]: unknown;
+      };
+    };
+    /** RunMetricsOut */
+    RunMetricsOut: {
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /** Items */
+      items: components['schemas']['MetricPointOut'][];
+      /** Total */
+      total: number;
+    };
+    /** RunOut */
+    RunOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /** Model Name */
+      model_name?: string | null;
+      /** Model Preset */
+      model_preset?: string | null;
+      /** Dataset Id */
+      dataset_id: string | null;
+      /** Dataset Name */
+      dataset_name?: string | null;
+      /** Status */
+      status: string;
+      /** Device */
+      device: string;
+      /** Batch Size */
+      batch_size: number;
+      /** Learning Rate */
+      learning_rate: number;
+      /** Max Steps */
+      max_steps: number;
+      /** Current Step */
+      current_step: number;
+      /** Loss */
+      loss: number | null;
+      /** Eval Loss */
+      eval_loss: number | null;
+      /** Best Val Loss */
+      best_val_loss?: number | null;
+      /** Tokens Per Sec */
+      tokens_per_sec: number | null;
+      /** Metrics */
+      metrics: {
+        [key: string]: unknown;
+      };
+      /** Hyperparams */
+      hyperparams: {
+        [key: string]: unknown;
+      };
+      /** Error */
+      error: string | null;
+      /** Started At */
+      started_at: string | null;
+      /** Completed At */
+      completed_at: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
     /** SnapshotCheck */
     SnapshotCheck: {
       /** Valid */
@@ -874,6 +1340,24 @@ export interface components {
       input?: unknown;
       /** Context */
       ctx?: Record<string, never>;
+    };
+    /** VocabularyOut */
+    VocabularyOut: {
+      /**
+       * Dataset Id
+       * Format: uuid
+       */
+      dataset_id: string;
+      /** Dataset Name */
+      dataset_name: string;
+      /** Vocab Size */
+      vocab_size: number;
+      /** Requested Vocab Size */
+      requested_vocab_size: number;
+      /** Train Tokens */
+      train_tokens: number;
+      /** Trained On Documents */
+      trained_on_documents: number;
     };
   };
   responses: never;
@@ -1753,6 +2237,366 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['GpuCheck'];
+        };
+      };
+    };
+  };
+  get_presets_api_models_presets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  list_vocabularies_api_models_vocabularies_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['VocabularyOut'][];
+        };
+      };
+    };
+  };
+  preview_model_shape_api_models_preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ModelPreviewRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelPreviewOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_models_api_models_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_ModelOut_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_model_api_models_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ModelCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_model_api_models__model_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        model_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_model_api_models__model_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        model_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_runs_api_runs_get: {
+    parameters: {
+      query?: {
+        status?: string | null;
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_RunOut_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_run_api_runs_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RunCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_run_api_runs__run_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_run_api_runs__run_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_run_metrics_api_runs__run_id__metrics_get: {
+    parameters: {
+      query?: {
+        limit?: number | null;
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunMetricsOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

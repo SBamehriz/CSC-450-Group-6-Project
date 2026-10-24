@@ -6,7 +6,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from forge import buckets, datasets, documents, overview, prepared_api, training_api
+from forge import (
+    buckets,
+    datasets,
+    documents,
+    models_api,
+    overview,
+    prepared_api,
+    runs_api,
+    training_api,
+)
 from forge.db import get_session
 from forge.errors import ApiError, register_error_handlers
 from forge.schemas import Health
@@ -37,6 +46,8 @@ def create_app() -> FastAPI:
     api.include_router(overview.router)
     api.include_router(prepared_api.router)
     api.include_router(training_api.router)
+    api.include_router(models_api.router)
+    api.include_router(runs_api.router)
     app.include_router(api)
 
     _serve_interface(app)

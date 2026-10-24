@@ -226,3 +226,24 @@ class Checkpoint(Base):
         Index("ix_checkpoints_run_id", "run_id"),
         Index("ix_checkpoints_is_best", "is_best"),
     )
+
+
+class MetricPoint(Base):
+    __tablename__ = "metric_points"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
+    )
+    step: Mapped[int] = mapped_column(Integer, nullable=False)
+    loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    val_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    learning_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "step", name="uq_metric_points_run_step"),
+        Index("ix_metric_points_run_id", "run_id"),
+        Index("ix_metric_points_run_step", "run_id", "step"),
+    )

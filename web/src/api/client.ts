@@ -13,8 +13,20 @@ export type OverviewStats = components['schemas']['OverviewStats'];
 export type RecentUpload = components['schemas']['RecentUpload'];
 export type Preset = components['schemas']['PresetOut'];
 export type GpuCheck = components['schemas']['GpuCheck'];
+export type Model = components['schemas']['ModelOut'];
+export type ModelCreate = components['schemas']['ModelCreate'];
+export type ModelPreviewRequest = components['schemas']['ModelPreviewRequest'];
+export type ModelPreviewOut = components['schemas']['ModelPreviewOut'];
+export type ModelPage = components['schemas']['Page_ModelOut_'];
+export type Vocabulary = components['schemas']['VocabularyOut'];
+export type Run = components['schemas']['RunOut'];
+export type RunCreate = components['schemas']['RunCreate'];
+export type RunPage = components['schemas']['Page_RunOut_'];
+export type MetricPoint = components['schemas']['MetricPointOut'];
+export type RunMetrics = components['schemas']['RunMetricsOut'];
 
 export const DOCUMENT_PAGE = 50;
+export const RUN_PAGE = 20;
 
 const API_PREFIX = '/api';
 
@@ -149,4 +161,64 @@ export const api = {
   preparedDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/prepared/download`,
   listPresets: () => request<Preset[]>('/presets'),
   checkGpu: () => request<GpuCheck>('/gpu'),
+
+  // Models (SP8.9)
+  listModels: (params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<ModelPage>(`/models${qs ? `?${qs}` : ''}`);
+  },
+  listAllModels: () => allPages<Model>('/models'),
+  getModel: (id: string) => request<Model>(`/models/${id}`),
+  createModel: (payload: ModelCreate) =>
+    request<Model>('/models', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteModel: (id: string) => request<void>(`/models/${id}`, { method: 'DELETE' }),
+  previewModel: (payload: ModelPreviewRequest) =>
+    request<ModelPreviewOut>('/models/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listVocabularies: () => request<Vocabulary[]>('/models/vocabularies'),
+  getModelPresets: () =>
+    request<{
+      presets: Record<
+        string,
+        {
+          n_layer: number;
+          d_model: number;
+          n_head: number;
+          ctx_len: number;
+          vocab_size: number;
+          dropout: number;
+          param_count: number;
+          estimated_memory_bytes: number;
+        }
+      >;
+      limits: {
+        max_n_layer: number;
+        max_d_model: number;
+        allowed_ctx: number[];
+        max_dropout: number;
+      };
+    }>('/models/presets'),
+
+  // Runs and Training History (SP8.18 & SP8.12)
+  listRuns: (params?: { status?: string; offset?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<RunPage>(`/runs${qs ? `?${qs}` : ''}`);
+  },
+  getRun: (id: string) => request<Run>(`/runs/${id}`),
+  createRun: (payload: RunCreate) =>
+    request<Run>('/runs', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteRun: (id: string) => request<void>(`/runs/${id}`, { method: 'DELETE' }),
+  getRunMetrics: (id: string, limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : '';
+    return request<RunMetrics>(`/runs/${id}/metrics${qs}`);
+  },
 };

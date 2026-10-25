@@ -9,6 +9,8 @@ const LINKS = [
   { to: '/', label: 'Overview', icon: 'home' },
   { to: '/data', label: 'Collections', icon: 'data' },
   { to: '/datasets', label: 'Datasets', icon: 'snapshot' },
+  { to: '/vocabularies', label: 'Vocabularies', icon: 'pieces' },
+  { to: '/training-sets', label: 'Training sets', icon: 'tokens' },
   { to: '/models', label: 'Models', icon: 'model' },
   { to: '/history', label: 'History', icon: 'history' },
 ] as const;

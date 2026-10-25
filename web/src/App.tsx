@@ -9,6 +9,8 @@ import OverviewPage from './pages/OverviewPage';
 import PreparedDataPage from './pages/PreparedDataPage';
 import RunDetailPage from './pages/RunDetailPage';
 import TrainingHistoryPage from './pages/TrainingHistoryPage';
+import TrainingSetsPage from './pages/TrainingSetsPage';
+import VocabulariesPage from './pages/VocabulariesPage';
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
         <Route path="/data/:bucketId" element={<BucketDetailPage />} />
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/datasets/:datasetId/prepare" element={<PreparedDataPage />} />
+        <Route path="/vocabularies" element={<VocabulariesPage />} />
+        <Route path="/training-sets" element={<TrainingSetsPage />} />
         <Route path="/models" element={<ModelsPage />} />
         <Route path="/history" element={<TrainingHistoryPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />

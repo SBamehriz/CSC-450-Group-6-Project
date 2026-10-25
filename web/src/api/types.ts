@@ -561,6 +561,180 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/tokenizers': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Tokenizers */
+    get: operations['list_tokenizers_api_tokenizers_get'];
+    put?: never;
+    /** Create Tokenizer */
+    post: operations['create_tokenizer_api_tokenizers_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/tokenizers/{target_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Tokenizer */
+    get: operations['get_tokenizer_api_tokenizers__target_id__get'];
+    put?: never;
+    post?: never;
+    /** Delete Tokenizer */
+    delete: operations['delete_tokenizer_api_tokenizers__target_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/tokenizers/{target_id}/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview Tokenizer */
+    post: operations['preview_tokenizer_api_tokenizers__target_id__preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/dataset-builds': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Builds */
+    get: operations['list_builds_api_dataset_builds_get'];
+    put?: never;
+    /** Create Build */
+    post: operations['create_build_api_dataset_builds_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/dataset-builds/{target_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Build */
+    get: operations['get_build_api_dataset_builds__target_id__get'];
+    put?: never;
+    post?: never;
+    /** Delete Build */
+    delete: operations['delete_build_api_dataset_builds__target_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/tokenizers/{target_id}/artifact': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Tokenizer Artifact */
+    get: operations['tokenizer_artifact_api_tokenizers__target_id__artifact_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/dataset-builds/{target_id}/manifest': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Build Manifest */
+    get: operations['build_manifest_api_dataset_builds__target_id__manifest_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/jobs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Jobs */
+    get: operations['list_jobs_api_jobs_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/jobs/{job_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Job */
+    get: operations['get_job_api_jobs__job_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/jobs/{job_id}/{action}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Change Job */
+    post: operations['change_job_api_jobs__job_id___action__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -620,6 +794,53 @@ export interface components {
       name?: string | null;
       /** Description */
       description?: string | null;
+    };
+    /** DatasetBuildCreate */
+    DatasetBuildCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Dataset Id
+       * Format: uuid
+       */
+      dataset_id: string;
+      /**
+       * Tokenizer Id
+       * Format: uuid
+       */
+      tokenizer_id: string;
+    };
+    /** DatasetBuildOut */
+    DatasetBuildOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Tokenizer Id
+       * Format: uuid
+       */
+      tokenizer_id: string;
+      /** Dataset Id */
+      dataset_id: string | null;
+      /** Dataset Name */
+      dataset_name: string;
+      /** Status */
+      status: string;
+      /** Stats */
+      stats: {
+        [key: string]: components['schemas']['SplitStats'];
+      };
+      /** Error */
+      error: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** DatasetCreate */
     DatasetCreate: {
@@ -781,6 +1002,47 @@ export interface components {
       status: string;
       /** Database */
       database: string;
+    };
+    /** JobOut */
+    JobOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Job Type */
+      job_type: string;
+      /** Status */
+      status: string;
+      /** Payload */
+      payload: {
+        [key: string]: unknown;
+      };
+      /** Progress */
+      progress: {
+        [key: string]: unknown;
+      };
+      /** Error */
+      error: string | null;
+      /**
+       * Attempts
+       * @default 0
+       */
+      attempts: number;
+      /**
+       * Cancel Requested
+       * @default false
+       */
+      cancel_requested: boolean;
+      /** Started At */
+      started_at: string | null;
+      /** Completed At */
+      completed_at: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** MetricPointOut */
     MetricPointOut: {
@@ -990,6 +1252,13 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** Page[DatasetBuildOut] */
+    Page_DatasetBuildOut_: {
+      /** Items */
+      items: components['schemas']['DatasetBuildOut'][];
+      /** Total */
+      total: number;
+    };
     /** Page[DatasetOut] */
     Page_DatasetOut_: {
       /** Items */
@@ -1001,6 +1270,13 @@ export interface components {
     Page_DocumentOut_: {
       /** Items */
       items: components['schemas']['DocumentOut'][];
+      /** Total */
+      total: number;
+    };
+    /** Page[JobOut] */
+    Page_JobOut_: {
+      /** Items */
+      items: components['schemas']['JobOut'][];
       /** Total */
       total: number;
     };
@@ -1022,6 +1298,13 @@ export interface components {
     Page_RunOut_: {
       /** Items */
       items: components['schemas']['RunOut'][];
+      /** Total */
+      total: number;
+    };
+    /** Page[TokenizerOut] */
+    Page_TokenizerOut_: {
+      /** Items */
+      items: components['schemas']['TokenizerOut'][];
       /** Total */
       total: number;
     };
@@ -1291,6 +1574,24 @@ export interface components {
        */
       validation_documents: number;
     };
+    /** SplitStats */
+    SplitStats: {
+      /**
+       * Documents
+       * @default 0
+       */
+      documents: number;
+      /**
+       * Tokens
+       * @default 0
+       */
+      tokens: number;
+      /**
+       * Bytes
+       * @default 0
+       */
+      bytes: number;
+    };
     /** TokenPreview */
     TokenPreview: {
       /** Token Count */
@@ -1304,6 +1605,52 @@ export interface components {
     TokenPreviewCreate: {
       /** Text */
       text: string;
+    };
+    /** TokenizerCreate */
+    TokenizerCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Dataset Id
+       * Format: uuid
+       */
+      dataset_id: string;
+      /**
+       * Vocab Size
+       * @default 4096
+       */
+      vocab_size: number;
+    };
+    /** TokenizerOut */
+    TokenizerOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Dataset Id */
+      dataset_id: string | null;
+      /** Dataset Name */
+      dataset_name: string;
+      /** Requested Vocab Size */
+      requested_vocab_size: number;
+      /** Vocab Size */
+      vocab_size: number | null;
+      /** Trained On */
+      trained_on: {
+        [key: string]: unknown;
+      };
+      /** Status */
+      status: string;
+      /** Error */
+      error: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /**
      * UploadOutcome
@@ -2588,6 +2935,446 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['RunMetricsOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_tokenizers_api_tokenizers_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_TokenizerOut_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_tokenizer_api_tokenizers_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TokenizerCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TokenizerOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_tokenizer_api_tokenizers__target_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TokenizerOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_tokenizer_api_tokenizers__target_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  preview_tokenizer_api_tokenizers__target_id__preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TokenPreviewCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TokenPreview'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_builds_api_dataset_builds_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_DatasetBuildOut_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_build_api_dataset_builds_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DatasetBuildCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DatasetBuildOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_build_api_dataset_builds__target_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DatasetBuildOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_build_api_dataset_builds__target_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  tokenizer_artifact_api_tokenizers__target_id__artifact_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  build_manifest_api_dataset_builds__target_id__manifest_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        target_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_jobs_api_jobs_get: {
+    parameters: {
+      query?: {
+        status?: string | null;
+        job_type?: string | null;
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Page_JobOut_'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_job_api_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  change_job_api_jobs__job_id___action__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+        action: 'cancel' | 'retry';
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
         };
       };
       /** @description Validation Error */

@@ -662,6 +662,7 @@ source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -702,6 +703,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "docling", marker = "extra == 'converter'", specifier = ">=2.126.0" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "filelock", specifier = ">=3.13,<4" },
     { name = "numpy", marker = "extra == 'train'", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

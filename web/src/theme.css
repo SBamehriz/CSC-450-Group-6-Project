@@ -1378,3 +1378,11 @@ textarea.input {
     animation: none !important;
   }
 }
+
+.job-error {
+  display: inline-block;
+  max-width: 60ch;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--bad);
+}

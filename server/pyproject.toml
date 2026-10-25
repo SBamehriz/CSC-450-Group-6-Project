@@ -15,6 +15,7 @@ dependencies = [
     "pypdf>=5.0",
     "Pillow>=10.0",
     "python-multipart>=0.0.9",  # fastapi needs it for uploads
+    "filelock>=3.13,<4",
 ]
 
 [project.optional-dependencies]

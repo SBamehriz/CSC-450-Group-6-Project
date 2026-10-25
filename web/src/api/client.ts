@@ -24,6 +24,11 @@ export type RunCreate = components['schemas']['RunCreate'];
 export type RunPage = components['schemas']['Page_RunOut_'];
 export type MetricPoint = components['schemas']['MetricPointOut'];
 export type RunMetrics = components['schemas']['RunMetricsOut'];
+export type Tokenizer = components['schemas']['TokenizerOut'];
+export type TokenizerCreate = components['schemas']['TokenizerCreate'];
+export type DatasetBuild = components['schemas']['DatasetBuildOut'];
+export type DatasetBuildCreate = components['schemas']['DatasetBuildCreate'];
+export type Job = components['schemas']['JobOut'];
 
 export const DOCUMENT_PAGE = 50;
 export const RUN_PAGE = 20;
@@ -221,4 +226,22 @@ export const api = {
     const qs = limit ? `?limit=${limit}` : '';
     return request<RunMetrics>(`/runs/${id}/metrics${qs}`);
   },
+  listTokenizers: () => allPages<Tokenizer>('/tokenizers'),
+  createTokenizer: (payload: TokenizerCreate) =>
+    request<Tokenizer>('/tokenizers', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteTokenizer: (id: string) => request<void>(`/tokenizers/${id}`, { method: 'DELETE' }),
+  previewTokenizer: (id: string, text: string) =>
+    request<components['schemas']['TokenPreview']>(`/tokenizers/${id}/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  tokenizerDownloadUrl: (id: string) => `${API_PREFIX}/tokenizers/${id}/artifact`,
+  listBuilds: () => allPages<DatasetBuild>('/dataset-builds'),
+  createBuild: (payload: DatasetBuildCreate) =>
+    request<DatasetBuild>('/dataset-builds', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteBuild: (id: string) => request<void>(`/dataset-builds/${id}`, { method: 'DELETE' }),
+  buildManifestUrl: (id: string) => `${API_PREFIX}/dataset-builds/${id}/manifest`,
+  listJobs: () => request<{ items: Job[]; total: number }>('/jobs?limit=20&offset=0'),
+  changeJob: (id: string, action: 'cancel' | 'retry') =>
+    request<Job>(`/jobs/${id}/${action}`, { method: 'POST' }),
 };

@@ -255,14 +255,86 @@ class GpuCheck(BaseModel):
 
 
 class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     job_type: str
     status: str
     payload: dict
     progress: dict
     error: str | None
+    attempts: int = 0
+    cancel_requested: bool = False
     started_at: datetime | None
     completed_at: datetime | None
+    created_at: datetime
+
+
+class JobPayload(BaseModel):
+    target_id: uuid.UUID
+    target_name: str
+
+
+class JobProgress(BaseModel):
+    completed: int = 0
+    total: int = 0
+    message: str = ""
+
+
+class SnapshotSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+    dataset_id: uuid.UUID
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("cannot be blank")
+        return value.strip()
+
+
+class TokenizerCreate(SnapshotSource):
+    vocab_size: int = Field(default=4096, ge=257, le=65535)
+
+
+class DatasetBuildCreate(SnapshotSource):
+    tokenizer_id: uuid.UUID
+
+
+class TokenizerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    dataset_id: uuid.UUID | None
+    dataset_name: str
+    requested_vocab_size: int
+    vocab_size: int | None
+    trained_on: dict
+    status: str
+    error: str | None
+    created_at: datetime
+
+
+class SplitStats(BaseModel):
+    documents: int = 0
+    tokens: int = 0
+    bytes: int = 0
+
+
+class DatasetBuildOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    tokenizer_id: uuid.UUID
+    dataset_id: uuid.UUID | None
+    dataset_name: str
+    status: str
+    stats: dict[str, SplitStats]
+    error: str | None
     created_at: datetime
 
 

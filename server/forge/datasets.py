@@ -1,33 +1,18 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import Bucket, Dataset, Document
-from forge.schemas import DatasetCreate, DatasetOut, Page
+from forge.models import Dataset, Run
+from forge.schemas import DatasetCreate, DatasetOut, Page, SnapshotCheck
+from forge.snapshots import archive_path, file_hash, read_snapshot, source_rows, write_snapshot
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-CHARS_PER_TOKEN = 4
-
-
-def _to_out(dataset: Dataset) -> DatasetOut:
-    return DatasetOut(
-        id=dataset.id,
-        name=dataset.name,
-        description=dataset.description,
-        bucket_id=dataset.bucket_id,
-        status=dataset.status,
-        doc_count=dataset.doc_count,
-        char_count=dataset.char_count,
-        token_count=dataset.token_count,
-        config=dataset.config,
-        artifact_uri=dataset.artifact_uri,
-        created_at=dataset.created_at,
-    )
 
 
 def _load_one(session: Session, dataset_id: uuid.UUID) -> Dataset:
@@ -37,18 +22,20 @@ def _load_one(session: Session, dataset_id: uuid.UUID) -> Dataset:
     return dataset
 
 
-def _bucket_stats(session: Session, bucket_id: uuid.UUID) -> tuple[int, int, int]:
-    row = session.execute(
-        select(
-            func.count().filter(Document.status == "parsed").label("parsed_documents"),
-            func.coalesce(func.sum(Document.char_count), 0).label("chars"),
-        ).where(Document.bucket_id == bucket_id)
-    ).one_or_none()
-    if row is None:
-        return (0, 0, 0)
-    parsed_docs = row[0] or 0
-    chars = row[1] or 0
-    return (parsed_docs, chars, chars // CHARS_PER_TOKEN)
+def _to_out(dataset: Dataset) -> DatasetOut:
+    result = DatasetOut.model_validate(dataset)
+    try:
+        path = archive_path(dataset)
+        result.download_ready = (
+            dataset.status == "ready"
+            and path.is_file()
+            and file_hash(path) == dataset.config.get("sha256")
+        )
+    except (ApiError, OSError):
+        result.download_ready = False
+    if not result.download_ready:
+        result.readiness_note = "The saved ZIP is missing or has changed. Build a new snapshot."
+    return result
 
 
 @router.get("", response_model=Page[DatasetOut])
@@ -64,61 +51,90 @@ def list_datasets(
         query = query.where(Dataset.bucket_id == bucket_id)
     if status is not None:
         query = query.where(Dataset.status == status)
-
-    total = session.execute(
-        select(func.count()).select_from(query.subquery())
-    ).scalar_one()
-
-    datasets = session.execute(
-        query.order_by(Dataset.name).limit(limit).offset(offset)
-    ).scalars().all()
-
-    return Page[DatasetOut](items=[_to_out(d) for d in datasets], total=total)
+    total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    datasets = session.scalars(
+        query.order_by(Dataset.created_at.desc(), Dataset.id).limit(limit).offset(offset)
+    ).all()
+    return Page[DatasetOut](items=[_to_out(dataset) for dataset in datasets], total=total)
 
 
 @router.post("", response_model=DatasetOut, status_code=201)
 def create_dataset(payload: DatasetCreate, session: Session = Depends(get_session)) -> DatasetOut:
-    existing = session.execute(
-        select(Dataset).where(Dataset.name == payload.name)
-    ).scalar_one_or_none()
-    if existing is not None:
+    if session.scalar(select(Dataset.id).where(Dataset.name == payload.name)) is not None:
         raise ApiError(409, "name_taken", f"A dataset named {payload.name!r} already exists.")
-
-    doc_count, char_count, token_count = 0, 0, 0
-    status = "draft"
-
-    if payload.bucket_id is not None:
-        bucket = session.get(Bucket, payload.bucket_id)
-        if bucket is None:
-            raise ApiError(404, "not_found", "No bucket with that id.")
-        doc_count, char_count, token_count = _bucket_stats(session, payload.bucket_id)
-        if doc_count > 0:
-            status = "ready"
-
+    bucket, rows = source_rows(session, payload.bucket_id)
     dataset = Dataset(
-        name=payload.name,
-        description=payload.description,
-        bucket_id=payload.bucket_id,
-        status=status,
-        doc_count=doc_count,
-        char_count=char_count,
-        token_count=token_count,
-        config=payload.config,
+        id=uuid.uuid4(), name=payload.name, description=payload.description, bucket_id=bucket.id
     )
+    write_snapshot(dataset, bucket, rows, payload.validation_fraction, payload.seed)
     session.add(dataset)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as problem:
+        session.rollback()
+        archive_path(dataset).unlink(missing_ok=True)
+        raise ApiError(
+            409, "name_taken", "That dataset name was just used. Choose another."
+        ) from problem
     return _to_out(dataset)
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session)) -> DatasetOut:
+    return _to_out(_load_one(session, dataset_id))
+
+
+@router.get("/{dataset_id}/verify", response_model=SnapshotCheck)
+def verify_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session)) -> SnapshotCheck:
     dataset = _load_one(session, dataset_id)
-    return _to_out(dataset)
+    try:
+        _manifest, splits = read_snapshot(dataset)
+    except ApiError as problem:
+        return SnapshotCheck(valid=False, message=problem.message)
+    return SnapshotCheck(
+        valid=True,
+        message="The ZIP and both text files passed their checks.",
+        train_documents=len(splits["train"]),
+        validation_documents=len(splits["validation"]),
+    )
+
+
+@router.get("/{dataset_id}/download", response_class=FileResponse)
+def download_dataset(
+    dataset_id: uuid.UUID, session: Session = Depends(get_session)
+) -> FileResponse:
+    dataset = _load_one(session, dataset_id)
+    read_snapshot(dataset)
+    return FileResponse(
+        archive_path(dataset), media_type="application/zip", filename=f"snapshot-{dataset.id}.zip"
+    )
 
 
 @router.delete("/{dataset_id}", status_code=204)
 def delete_dataset(dataset_id: uuid.UUID, session: Session = Depends(get_session)) -> Response:
+    from forge.prepared_api import _prepare_lock
+
+    if not _prepare_lock.acquire(blocking=False):
+        raise ApiError(409, "busy", "Wait for preparation to finish before deleting a snapshot.")
+    try:
+        return _delete_dataset(dataset_id, session)
+    finally:
+        _prepare_lock.release()
+
+
+def _delete_dataset(dataset_id: uuid.UUID, session: Session) -> Response:
+    from forge.preparation import prepared_path
+
     dataset = _load_one(session, dataset_id)
+    if session.scalar(select(Run.id).where(Run.dataset_id == dataset_id).limit(1)):
+        raise ApiError(409, "in_use", "A run uses this dataset. Keep it with the run.")
+    try:
+        path = archive_path(dataset)
+    except ApiError:
+        path = None
     session.delete(dataset)
     session.commit()
+    prepared_path(dataset).unlink(missing_ok=True)
+    if path is not None:
+        path.unlink(missing_ok=True)
     return Response(status_code=204)

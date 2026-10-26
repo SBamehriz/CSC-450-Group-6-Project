@@ -7,6 +7,10 @@ import { ErrorBox } from './ui';
 const WINDOW = 4000;
 
 export default function TextPreview({ documentId }: { documentId: string }) {
+  return <TextWindow key={documentId} documentId={documentId} />;
+}
+
+function TextWindow({ documentId }: { documentId: string }) {
   const [offset, setOffset] = useState(0);
   const text = useQuery({
     queryKey: ['documentText', documentId, offset],
@@ -23,7 +27,11 @@ export default function TextPreview({ documentId }: { documentId: string }) {
         </p>
       ) : (
         <>
-          <pre className="preview">{text.data.text}</pre>
+          {text.data.text ? (
+            <pre className="preview">{text.data.text}</pre>
+          ) : (
+            <p className="muted">No cleaned text in this file.</p>
+          )}
           <div className="document-pager">
             <button
               type="button"

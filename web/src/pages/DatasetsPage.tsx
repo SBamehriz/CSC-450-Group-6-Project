@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { api, type Dataset } from '../api/client';
+import SnapshotCheck from '../components/SnapshotCheck';
 import {
   Card,
   CardHead,
@@ -96,7 +97,9 @@ export default function DatasetsPage() {
             held aside to check it later. The split happens by whole document, with at least one in
             each file.
           </p>
-          <p>Snapshots contain text. Tokenization and model training come later.</p>
+          <p>
+            Snapshots contain text. Open Prepare data to learn word pieces and save token files.
+          </p>
         </div>
       ) : null}
       {buckets.error ? (
@@ -220,11 +223,11 @@ export default function DatasetsPage() {
                       ? 'Give the snapshot a name first.'
                       : !validSplit || !validSeed
                         ? 'Check the split settings.'
-                        : 'Up to 20 MB of cleaned text. Quality flags do not exclude a file.'}
+                        : 'Up to 50 MB of cleaned text. Quality flags do not exclude a file.'}
                 </p>
               </div>
               {create.error ? <Notice tone="bad">{create.error.message}</Notice> : null}
-              {create.data?.status === 'ready' ? (
+              {create.data?.download_ready ? (
                 <p role="status">
                   Saved {create.data.name}.{' '}
                   <a href={api.datasetDownloadUrl(create.data.id)}>Download your snapshot →</a>
@@ -320,10 +323,10 @@ export default function DatasetsPage() {
                 <h3 className="h2">{dataset.name}</h3>
                 <Chip
                   tone={
-                    dataset.status === 'ready' ? 'ok' : dataset.status === 'failed' ? 'bad' : 'idle'
+                    dataset.download_ready ? 'ok' : dataset.status === 'failed' ? 'bad' : 'idle'
                   }
                 >
-                  {dataset.status}
+                  {dataset.download_ready ? 'Saved ZIP' : 'Needs a new snapshot'}
                 </Chip>
               </div>
               <p className="muted">
@@ -343,6 +346,9 @@ export default function DatasetsPage() {
                   <dd>{compactNumber(dataset.char_count)}</dd>
                 </div>
               </dl>
+              {dataset.readiness_note ? (
+                <Notice tone="warn">{dataset.readiness_note}</Notice>
+              ) : null}
               <details className="disclosure">
                 <summary>Snapshot details</summary>
                 <dl className="preview-counts">
@@ -352,7 +358,7 @@ export default function DatasetsPage() {
                       {buckets.data?.items.find((bucket) => bucket.id === dataset.bucket_id)
                         ?.name ??
                         dataset.bucket_id ??
-                        'No source recorded'}
+                        String(dataset.config.bucket_name ?? 'Source removed')}
                     </dd>
                   </div>
                   <div>
@@ -367,7 +373,12 @@ export default function DatasetsPage() {
                 <p className="hint">The manifest keeps each source document’s hash and split.</p>
               </details>
               <div className="collection-card-actions">
-                {dataset.status === 'ready' ? (
+                {dataset.download_ready ? (
+                  <Link className="btn btn-primary" to={`/datasets/${dataset.id}/prepare`}>
+                    Prepare data
+                  </Link>
+                ) : null}
+                {dataset.download_ready ? (
                   <a className="btn" href={api.datasetDownloadUrl(dataset.id)}>
                     Download ZIP
                   </a>
@@ -379,6 +390,7 @@ export default function DatasetsPage() {
                   onConfirm={() => remove.mutate(dataset.id)}
                 />
               </div>
+              {dataset.download_ready ? <SnapshotCheck datasetId={dataset.id} /> : null}
             </article>
           ))}
         </div>

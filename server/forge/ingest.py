@@ -445,8 +445,8 @@ def parse_image_with_metadata(
                 "image_mode": img.mode,
                 "image_format": img.format or Path(filename).suffix.lstrip(".").upper(),
             }
-    except Exception:
-        pass
+    except Exception as problem:
+        raise ParseError(f"Image file {filename!r} is damaged or invalid: {problem}") from problem
 
     try:
         text = ocr_image(raw, filename=filename)
@@ -625,18 +625,57 @@ def clean(text: str, mode: str = "standard", encoding_suspect: bool = False) -> 
 
 BINARY_EXTENSIONS = ("pdf", "docx", *IMAGE_EXTENSIONS)
 TEXT_EXTENSIONS = ("txt", "md", "html", "htm", "jsonl", "json")
+BINARY_MIME_TYPES = (
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+)
 
 
-def is_binary_format(filename_or_ext: str) -> bool:
+def is_binary_format(filename_or_ext: str, content_type: str | None = None) -> bool:
+    """Return True if the filename, extension, or MIME type represents a binary format."""
+    if content_type:
+        ct = content_type.lower().split(";")[0].strip()
+        if ct.startswith("image/") or ct in BINARY_MIME_TYPES:
+            return True
     ext, _ = split_extension(filename_or_ext)
-    return ext in BINARY_EXTENSIONS
+    clean_ext = ext or filename_or_ext.lower().lstrip(".")
+    return clean_ext in BINARY_EXTENSIONS
 
 
-def looks_mis_decoded(raw: bytes, filename: str | None = None) -> bool:
+def is_binary_bytes(raw: bytes) -> bool:
+    """Detect common binary file signatures (JPEG, PNG, PDF, DOCX/ZIP)."""
+    if len(raw) < 4:
+        return False
+    # JPEG SOI marker (\xff\xd8\xff)
+    if raw.startswith(b"\xff\xd8\xff"):
+        return True
+    # PNG signature (\x89PNG\r\n\x1a\n)
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    # PDF header (%PDF-)
+    if raw.startswith(b"%PDF-"):
+        return True
+    # PK zip / DOCX signature (PK\x03\x04 or PK\x05\x06 or PK\x07\x08)
+    if raw.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")):
+        return True
+    return False
+
+
+def looks_mis_decoded(
+    raw: bytes,
+    filename: str | None = None,
+    content_type: str | None = None,
+) -> bool:
+    """Detect if raw bytes appear to be mis-decoded text, ignoring valid binary uploads."""
+    if content_type and is_binary_format("", content_type=content_type):
+        return False
+    if filename is not None and is_binary_format(filename, content_type=content_type):
+        return False
+    if is_binary_bytes(raw):
+        return False
     if filename is not None:
-        ext, gzipped = split_extension(filename)
-        if ext in BINARY_EXTENSIONS:
-            return False
+        _, gzipped = split_extension(filename)
         if gzipped:
             try:
                 raw = gzip.decompress(raw)

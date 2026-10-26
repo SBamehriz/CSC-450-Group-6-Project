@@ -44,6 +44,8 @@ def db(engine) -> Iterator[Session]:
         conn.execute(text("DELETE FROM runs"))
         conn.execute(text("DELETE FROM models"))
         conn.execute(text("DELETE FROM jobs"))
+        conn.execute(text("DELETE FROM dataset_builds"))
+        conn.execute(text("DELETE FROM tokenizers"))
         conn.execute(text("DELETE FROM datasets"))
         conn.execute(text("DELETE FROM documents"))
         conn.execute(text("DELETE FROM buckets"))

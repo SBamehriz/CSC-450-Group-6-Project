@@ -176,6 +176,10 @@ const ICONS = {
   data: 'M12 4 4 8l8 4 8-4zM4 12l8 4 8-4M4 16l8 4 8-4',
   snapshot: 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6',
   upload: 'M12 16V4M7 9l5-5 5 5M4 15v5h16v-5',
+  model: 'M7 7h10v10H7zM4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3',
+  history: 'M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5',
+  pieces: 'M4 6h7v5H4zM13 6h7v5h-7zM4 13h4v5H4zM10 13h10v5H10z',
+  tokens: 'M5 5h14M5 9h14M5 13h9M5 17h6M17 14l3 3-3 3',
 } as const;
 
 export function Icon({ name }: { name: keyof typeof ICONS }) {

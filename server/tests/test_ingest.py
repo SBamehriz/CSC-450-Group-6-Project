@@ -76,7 +76,7 @@ def test_uploading_an_unsupported_file_fails_the_same_way():
 
 
 def test_uploading_corrupted_docx_fails():
-    with pytest.raises(ParseError):
+    with pytest.raises(ParseError, match="DOCX"):
         parse("thesis.docx", read("unsupported.docx"))
 
 
@@ -306,12 +306,19 @@ def test_looks_mis_decoded_ignores_binary_formats():
     for name in ("doc.pdf", "doc.docx", "photo.png", "photo.jpg", "photo.jpeg"):
         assert looks_mis_decoded(arbitrary_binary, filename=name) is False
 
+    # MIME types and binary signatures are also recognized without receiving mis-decoded flags
+    jpeg_bytes = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00\x48\x00\x48\x00\x00\xff\xdb"
+    assert looks_mis_decoded(jpeg_bytes) is False
+    assert looks_mis_decoded(arbitrary_binary, content_type="image/jpeg") is False
+    assert looks_mis_decoded(arbitrary_binary, content_type="image/png") is False
+    assert looks_mis_decoded(arbitrary_binary, content_type="application/pdf") is False
+
     # Normal text with non-UTF-8 bytes is still marked mis-decoded
     assert looks_mis_decoded(b"caf\xe9", filename="notes.txt") is True
     assert looks_mis_decoded(b"caf\xe9", filename="notes.md") is True
     assert looks_mis_decoded(b"caf\xe9", filename="page.html") is True
     # Valid UTF-8 text is not marked mis-decoded
-    assert looks_mis_decoded("valid text".encode("utf-8"), filename="notes.txt") is False
+    assert looks_mis_decoded(b"valid text", filename="notes.txt") is False
 
 
 def test_encoding_suspect_becomes_a_flag():

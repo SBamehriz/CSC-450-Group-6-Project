@@ -11,6 +11,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('starts at the first window when another file is selected', async () => {
+  const read = vi.spyOn(api, 'documentText').mockImplementation(async (id, offset = 0) => ({
+    text: `${id} ${offset}`,
+    offset,
+    length: 4000,
+    total: 9000,
+  }));
+  const view = open(<TextPreview documentId="first" />);
+  await screen.findByText('first 0');
+  fireEvent.click(screen.getByRole('button', { name: 'Next text' }));
+  await screen.findByText('first 4000');
+  const { QueryClientProvider } = await import('@tanstack/react-query');
+  view.rerender(
+    <QueryClientProvider client={view.queryClient}>
+      <TextPreview documentId="second" />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('second 0');
+  expect(read).toHaveBeenCalledWith('second', 0, 4000);
+});
+
 it('reads text beyond the first window and can return to it', async () => {
   vi.spyOn(api, 'documentText').mockImplementation(async (_id, offset = 0) => ({
     text: offset ? 'Last window.' : 'First window.',

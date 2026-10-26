@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +17,8 @@ def test_presets_are_the_sizes_we_advertise():
     assert 2.5 < sizes["nano"] < 3.5
     assert 8.0 < sizes["micro"] < 10.0
     assert 30.0 < sizes["small"] < 36.0
+    assert 95.0 < sizes["large"] < 100.0
+    assert 130.0 < sizes["135m"] < 136.0
 
 
 def test_param_formula_matches_the_real_model():
@@ -134,17 +137,120 @@ def test_one_step_actually_lowers_the_loss():
 
 
 def test_bad_config_is_caught_early():
-    with pytest.raises(ValueError, match="divide evenly"):
+    with pytest.raises(ValueError) as problem:
         presets.ModelConfig(n_layer=2, d_model=30, n_head=4, ctx_len=16)
+    assert str(problem.value) == (
+        "A width of 30 can't be split evenly between 4 attention heads: choose a width "
+        "that divides by the number of heads."
+    )
 
-    with pytest.raises(ValueError, match="ctx_len"):
-        presets.validate(presets.get_preset("nano", ctx_len=333))
+    nano = presets.get_preset("nano")
+    for changed, said in (
+        (
+            {"ctx_len": 333},
+            "This model would read a context of 333 word pieces, and Forge's "
+            "GPT reads 64 to 2,048, in steps of 64.",
+        ),
+        ({"n_layer": 25}, "This model would have 25 blocks, and Forge's GPT has 1 to 24."),
+        ({"n_layer": 0}, "This model would have 0 blocks, and Forge's GPT has 1 to 24."),
+        (
+            {"d_model": 1024, "n_head": 8},
+            "This model would have a width of 1,024, and Forge's GPT has a width of 1 to 768.",
+        ),
+        ({"dropout": 0.5}, "Dropout goes from 0, the default, to 0.2."),
+    ):
+        with pytest.raises(ValueError) as problem:
+            presets.validate(replace(nano, **changed))
+        assert str(problem.value) == said, changed
 
     with pytest.raises(ValueError, match="unknown preset"):
         presets.get_preset("enormous")
 
 
-def test_vram_estimate_grows_with_size():
-    nano = presets.estimate_vram_bytes(presets.PRESETS["nano"], micro_batch_seqs=16)
-    small = presets.estimate_vram_bytes(presets.PRESETS["small"], micro_batch_seqs=16)
-    assert 0 < nano < small
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_every_preset_is_a_valid_shape(name):
+    presets.validate(presets.PRESETS[name])
+
+
+MEASURED_PEAKS = [
+    (replace(presets.PRESETS["nano"], vocab_size=16384), 16, 1_827_428_864),
+    (replace(presets.PRESETS["micro"], vocab_size=16384), 16, 2_222_380_544),
+    (replace(presets.PRESETS["small"], vocab_size=16384), 16, 3_356_820_992),
+]
+
+
+def test_training_memory_is_its_parts_worked_by_hand():
+    config = replace(presets.PRESETS["nano"], vocab_size=16384)
+    parts = presets.training_memory(config, micro_batch_seqs=16)
+    assert parts == {
+        "weights": 16 * 2_956_032,
+        "weight_copies": 2 * 2_956_032,
+        "activations": 16 * 512 * 4 * 34 * 128,
+        "attention": 0,
+        "logits": 13 * 16 * 512 * 16384,
+        "cuda_context": 500_000_000,
+    }
+    assert sum(parts.values()) == 2_440_645_376
+
+
+@pytest.mark.parametrize("config, micro, peak", MEASURED_PEAKS)
+def test_training_memory_never_falls_under_a_measured_peak(config, micro, peak):
+    parts = presets.training_memory(config, micro_batch_seqs=micro)
+    assert sum(parts.values()) - parts["cuda_context"] >= peak
+
+
+def test_the_bytes_a_logit_costs_are_read_off_the_measured_presets():
+    left = []
+    for config, micro, peak in MEASURED_PEAKS:
+        parts = presets.training_memory(config, micro_batch_seqs=micro)
+        logits = micro * config.ctx_len * config.vocab_size
+        weights = parts["weights"] + parts["weight_copies"]
+        left.append((peak - weights - parts["activations"]) / logits)
+    assert [round(value, 1) for value in left] == [12.2, 12.2, 12.0]
+    assert presets.LOGIT_BYTES == math.ceil(max(left)) == 13
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_the_presets_keep_no_attention_scores(name):
+    config = presets.PRESETS[name]
+    assert config.head_dim % 8 == 0
+    assert presets.training_memory(config, micro_batch_seqs=16)["attention"] == 0
+
+
+def test_an_odd_head_width_keeps_every_score_matrix():
+    config = presets.ModelConfig(n_layer=2, d_model=200, n_head=8, ctx_len=4096)
+    parts = presets.training_memory(config, micro_batch_seqs=3)
+    assert parts["attention"] == 7 * 3 * 8 * 4096 * 4096 * 2 == 5_637_144_576
+    fused = presets.ModelConfig(n_layer=2, d_model=200, n_head=25, ctx_len=4096)
+    assert presets.training_memory(fused, micro_batch_seqs=3)["attention"] == 0
+
+
+MEASURED_RESERVED = [
+    (4, 128, 4, 512, 8192, 1, 127_926_272),
+    (6, 256, 8, 2048, 8192, 2, 811_597_824),
+    (8, 512, 8, 2048, 8192, 6, 3_552_575_488),
+    (6, 256, 8, 2048, 8192, 10, 3_370_123_264),
+    (6, 256, 8, 4096, 8192, 5, 3_370_123_264),
+    (4, 128, 4, 8192, 8192, 1, 1_044_381_696),
+    (4, 128, 4, 512, 262144, 1, 2_204_106_752),
+    (4, 200, 8, 2048, 8192, 2, 2_367_684_608),
+    (4, 128, 4, 512, 16384, 16, 1_843_396_608),
+    (6, 256, 8, 512, 16384, 16, 2_281_701_376),
+    (8, 512, 8, 512, 16384, 16, 3_391_094_784),
+]
+
+
+@pytest.mark.parametrize("layers, width, heads, ctx, vocab, micro, reserved", MEASURED_RESERVED)
+def test_training_memory_covers_what_the_card_reserved(
+    layers, width, heads, ctx, vocab, micro, reserved
+):
+    config = presets.ModelConfig(layers, width, heads, ctx, vocab)
+    assert sum(presets.training_memory(config, micro_batch_seqs=micro).values()) >= reserved
+
+
+def test_the_135m_size_memory_is_worked_out_in_full():
+    config = presets.PRESETS["135m"]
+    one = sum(presets.training_memory(config, micro_batch_seqs=1).values())
+    eight = sum(presets.training_memory(config, micro_batch_seqs=8).values())
+    assert one < eight
+    assert eight == 8_290_856_704

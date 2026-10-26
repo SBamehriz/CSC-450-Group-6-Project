@@ -15,9 +15,13 @@ dependencies = [
     "pypdf>=5.0",
     "Pillow>=10.0",
     "python-multipart>=0.0.9",  # fastapi needs it for uploads
+    "filelock>=3.13,<4",
 ]
 
 [project.optional-dependencies]
+prepare = [
+    "tokenizers>=0.20,<0.24",
+]
 # keep torch optional, its huge
 train = [
     "torch>=2.3",

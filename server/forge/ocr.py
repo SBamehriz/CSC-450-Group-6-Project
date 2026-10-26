@@ -40,9 +40,13 @@ def _get_rapidocr():
             _rapidocr = RapidOCR()
         except ImportError:
             try:
-                from rapidocr import RapidOCR
+                import rapidocr
 
-                _rapidocr = RapidOCR()
+                rapidocr_cls = getattr(rapidocr, "RapidOCR", None)
+                if rapidocr_cls is not None:
+                    _rapidocr = rapidocr_cls()
+                else:
+                    _rapidocr = False
             except ImportError:
                 _rapidocr = False
     return _rapidocr if _rapidocr is not False else None
@@ -89,6 +93,12 @@ def ocr_image(
     Supports PNG, JPG, JPEG, TIFF, BMP, and WebP formats. Preprocesses the image
     to RGB and dispatches to the available OCR engine (RapidOCR, Docling, or PyTesseract).
     """
+    if not is_ocr_available():
+        raise RuntimeError(
+            "No OCR engine is installed. Please install 'docling' or 'rapidocr-onnxruntime' "
+            "via 'uv sync --extra converter' or 'pip install docling rapidocr-onnxruntime'."
+        )
+
     raw_bytes: bytes
     img: Image.Image
 
@@ -173,6 +183,12 @@ def ocr_pdf(
     Dispatches to Docling's OCR pipeline, or extracts embedded page images via pypdf
     and applies image OCR page-by-page.
     """
+    if not is_ocr_available():
+        raise RuntimeError(
+            "No OCR engine is installed. Please install 'docling' or 'rapidocr-onnxruntime' "
+            "via 'uv sync --extra converter' or 'pip install docling rapidocr-onnxruntime'."
+        )
+
     raw_bytes: bytes
     if isinstance(pdf_input, (str, Path)):
         path = Path(pdf_input)

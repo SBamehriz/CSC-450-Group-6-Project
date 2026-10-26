@@ -1,3 +1,5 @@
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
@@ -6,7 +8,18 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from forge import buckets, datasets, documents, overview
+from forge import (
+    buckets,
+    datasets,
+    documents,
+    jobs,
+    jobs_api,
+    models_api,
+    overview,
+    prepared_api,
+    runs_api,
+    training_api,
+)
 from forge.db import get_session
 from forge.errors import ApiError, register_error_handlers
 from forge.schemas import Health
@@ -16,8 +29,19 @@ API_PREFIX = "/api"
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Pending jobs survive closing the window or restarting the app.
+    try:
+        jobs.start_runner()
+    except OSError:
+        # A full process table must not hide the data and job controls too.
+        logging.getLogger(__name__).exception("Could not start the background process")
+    yield
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Forge", version="0.1.0", docs_url=f"{API_PREFIX}/docs")
+    app = FastAPI(title="Forge", version="0.1.0", docs_url=f"{API_PREFIX}/docs", lifespan=lifespan)
     register_error_handlers(app)
 
     api = APIRouter(prefix=API_PREFIX)
@@ -35,6 +59,11 @@ def create_app() -> FastAPI:
     api.include_router(documents.router)
     api.include_router(datasets.router)
     api.include_router(overview.router)
+    api.include_router(prepared_api.router)
+    api.include_router(training_api.router)
+    api.include_router(models_api.router)
+    api.include_router(runs_api.router)
+    api.include_router(jobs_api.router)
     app.include_router(api)
 
     _serve_interface(app)

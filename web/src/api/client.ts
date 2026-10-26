@@ -11,8 +11,27 @@ export type Dataset = components['schemas']['DatasetOut'];
 export type DatasetCreate = components['schemas']['DatasetCreate'];
 export type OverviewStats = components['schemas']['OverviewStats'];
 export type RecentUpload = components['schemas']['RecentUpload'];
+export type Preset = components['schemas']['PresetOut'];
+export type GpuCheck = components['schemas']['GpuCheck'];
+export type Model = components['schemas']['ModelOut'];
+export type ModelCreate = components['schemas']['ModelCreate'];
+export type ModelPreviewRequest = components['schemas']['ModelPreviewRequest'];
+export type ModelPreviewOut = components['schemas']['ModelPreviewOut'];
+export type ModelPage = components['schemas']['Page_ModelOut_'];
+export type Vocabulary = components['schemas']['VocabularyOut'];
+export type Run = components['schemas']['RunOut'];
+export type RunCreate = components['schemas']['RunCreate'];
+export type RunPage = components['schemas']['Page_RunOut_'];
+export type MetricPoint = components['schemas']['MetricPointOut'];
+export type RunMetrics = components['schemas']['RunMetricsOut'];
+export type Tokenizer = components['schemas']['TokenizerOut'];
+export type TokenizerCreate = components['schemas']['TokenizerCreate'];
+export type DatasetBuild = components['schemas']['DatasetBuildOut'];
+export type DatasetBuildCreate = components['schemas']['DatasetBuildCreate'];
+export type Job = components['schemas']['JobOut'];
 
 export const DOCUMENT_PAGE = 50;
+export const RUN_PAGE = 20;
 
 const API_PREFIX = '/api';
 
@@ -123,8 +142,106 @@ export const api = {
     }),
   deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' }),
   listDatasets: () => allPages<Dataset>('/datasets'),
+  getDataset: (id: string) => request<Dataset>(`/datasets/${id}`),
+  verifyDataset: (id: string) =>
+    request<components['schemas']['SnapshotCheck']>(`/datasets/${id}/verify`),
   createDataset: (payload: DatasetCreate) =>
     request<Dataset>('/datasets', { method: 'POST', body: JSON.stringify(payload) }),
   deleteDataset: (id: string) => request<void>(`/datasets/${id}`, { method: 'DELETE' }),
   datasetDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/download`,
+  preparationTools: () => request<components['schemas']['PrepareTools']>('/preparation/tools'),
+  getPrepared: (id: string) =>
+    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepared`),
+  prepareDataset: (id: string, vocabSize: number) =>
+    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepare`, {
+      method: 'POST',
+      body: JSON.stringify({ vocab_size: vocabSize }),
+    }),
+  deletePrepared: (id: string) => request<void>(`/datasets/${id}/prepared`, { method: 'DELETE' }),
+  previewTokens: (id: string, text: string) =>
+    request<components['schemas']['TokenPreview']>(`/datasets/${id}/prepared/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  preparedDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/prepared/download`,
+  listPresets: () => request<Preset[]>('/presets'),
+  checkGpu: () => request<GpuCheck>('/gpu'),
+
+  // Models (SP8.9)
+  listModels: (params?: { offset?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<ModelPage>(`/models${qs ? `?${qs}` : ''}`);
+  },
+  listAllModels: () => allPages<Model>('/models'),
+  getModel: (id: string) => request<Model>(`/models/${id}`),
+  createModel: (payload: ModelCreate) =>
+    request<Model>('/models', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteModel: (id: string) => request<void>(`/models/${id}`, { method: 'DELETE' }),
+  previewModel: (payload: ModelPreviewRequest) =>
+    request<ModelPreviewOut>('/models/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listVocabularies: () => request<Vocabulary[]>('/models/vocabularies'),
+  getModelPresets: () =>
+    request<{
+      presets: Record<
+        string,
+        {
+          n_layer: number;
+          d_model: number;
+          n_head: number;
+          ctx_len: number;
+          vocab_size: number;
+          dropout: number;
+          param_count: number;
+          estimated_memory_bytes: number;
+        }
+      >;
+      limits: {
+        max_n_layer: number;
+        max_d_model: number;
+        allowed_ctx: number[];
+        max_dropout: number;
+      };
+    }>('/models/presets'),
+
+  // Runs and Training History (SP8.18 & SP8.12)
+  listRuns: (params?: { status?: string; offset?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return request<RunPage>(`/runs${qs ? `?${qs}` : ''}`);
+  },
+  getRun: (id: string) => request<Run>(`/runs/${id}`),
+  createRun: (payload: RunCreate) =>
+    request<Run>('/runs', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteRun: (id: string) => request<void>(`/runs/${id}`, { method: 'DELETE' }),
+  getRunMetrics: (id: string, limit?: number) => {
+    const qs = limit ? `?limit=${limit}` : '';
+    return request<RunMetrics>(`/runs/${id}/metrics${qs}`);
+  },
+  listTokenizers: () => allPages<Tokenizer>('/tokenizers'),
+  createTokenizer: (payload: TokenizerCreate) =>
+    request<Tokenizer>('/tokenizers', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteTokenizer: (id: string) => request<void>(`/tokenizers/${id}`, { method: 'DELETE' }),
+  previewTokenizer: (id: string, text: string) =>
+    request<components['schemas']['TokenPreview']>(`/tokenizers/${id}/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  tokenizerDownloadUrl: (id: string) => `${API_PREFIX}/tokenizers/${id}/artifact`,
+  listBuilds: () => allPages<DatasetBuild>('/dataset-builds'),
+  createBuild: (payload: DatasetBuildCreate) =>
+    request<DatasetBuild>('/dataset-builds', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteBuild: (id: string) => request<void>(`/dataset-builds/${id}`, { method: 'DELETE' }),
+  buildManifestUrl: (id: string) => `${API_PREFIX}/dataset-builds/${id}/manifest`,
+  listJobs: () => request<{ items: Job[]; total: number }>('/jobs?limit=20&offset=0'),
+  changeJob: (id: string, action: 'cancel' | 'retry') =>
+    request<Job>(`/jobs/${id}/${action}`, { method: 'POST' }),
 };

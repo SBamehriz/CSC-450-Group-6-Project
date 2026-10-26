@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -138,6 +138,8 @@ class Health(BaseModel):
 
 
 class DatasetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
     bucket_id: uuid.UUID
@@ -171,6 +173,15 @@ class DatasetOut(BaseModel):
     config: dict
     artifact_uri: str | None
     created_at: datetime
+    download_ready: bool = False
+    readiness_note: str = ""
+
+
+class SnapshotCheck(BaseModel):
+    valid: bool
+    message: str
+    train_documents: int = 0
+    validation_documents: int = 0
 
 
 class JobCreate(BaseModel):
@@ -178,15 +189,152 @@ class JobCreate(BaseModel):
     payload: dict = Field(default_factory=dict)
 
 
+class PrepareCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    vocab_size: int = Field(default=4096, ge=257, le=16384)
+
+
+class PrepareTools(BaseModel):
+    available: bool
+    max_text_mb: int
+
+
+class PreparedOut(BaseModel):
+    ready: bool
+    message: str = ""
+    vocab_size: int = 0
+    requested_vocab_size: int = 0
+    train_tokens: int = 0
+    validation_tokens: int = 0
+    trained_on_documents: int = 0
+    eos_id: int = 0
+    sha256: str = ""
+    snapshot_sha256: str = ""
+
+
+class TokenPreviewCreate(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+class TokenPreview(BaseModel):
+    token_count: int
+    ids: list[int]
+    pieces: list[str]
+
+
+class PresetMemory(BaseModel):
+    sequences_per_step: int
+    bytes: int
+
+
+class PresetOut(BaseModel):
+    name: str
+    n_layer: int
+    d_model: int
+    n_head: int
+    ctx_len: int
+    vocab_size: int
+    parameters: int
+    memory: list[PresetMemory]
+
+
+class GpuCard(BaseModel):
+    index: int
+    name: str
+    memory_bytes: int
+    driver: str
+    compute_capability: str
+
+
+class GpuCheck(BaseModel):
+    cards: list[GpuCard]
+    tool_said: str | None
+    torch: Literal["cuda", "rocm", "cpu", "missing", "unknown"]
+    torch_version: str | None
+    torch_cuda: str | None
+
+
 class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     job_type: str
     status: str
     payload: dict
     progress: dict
     error: str | None
+    attempts: int = 0
+    cancel_requested: bool = False
     started_at: datetime | None
     completed_at: datetime | None
+    created_at: datetime
+
+
+class JobPayload(BaseModel):
+    target_id: uuid.UUID
+    target_name: str
+
+
+class JobProgress(BaseModel):
+    completed: int = 0
+    total: int = 0
+    message: str = ""
+
+
+class SnapshotSource(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+    dataset_id: uuid.UUID
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("cannot be blank")
+        return value.strip()
+
+
+class TokenizerCreate(SnapshotSource):
+    vocab_size: int = Field(default=4096, ge=257, le=65535)
+
+
+class DatasetBuildCreate(SnapshotSource):
+    tokenizer_id: uuid.UUID
+
+
+class TokenizerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    dataset_id: uuid.UUID | None
+    dataset_name: str
+    requested_vocab_size: int
+    vocab_size: int | None
+    trained_on: dict
+    status: str
+    error: str | None
+    created_at: datetime
+
+
+class SplitStats(BaseModel):
+    documents: int = 0
+    tokens: int = 0
+    bytes: int = 0
+
+
+class DatasetBuildOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    tokenizer_id: uuid.UUID
+    dataset_id: uuid.UUID | None
+    dataset_name: str
+    status: str
+    stats: dict[str, SplitStats]
+    error: str | None
     created_at: datetime
 
 
@@ -194,6 +342,7 @@ class ModelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
     preset: str | None = None
+    dataset_id: uuid.UUID | None = None
     n_layer: int = Field(ge=1, le=12)
     d_model: int = Field(ge=1, le=768)
     n_head: int = Field(ge=1)
@@ -201,6 +350,35 @@ class ModelCreate(BaseModel):
     vocab_size: int = 16384
     dropout: float = Field(default=0.0, ge=0.0, le=0.5)
     config: dict = Field(default_factory=dict)
+
+
+class ModelPreviewRequest(BaseModel):
+    preset: str | None = None
+    dataset_id: uuid.UUID | None = None
+    n_layer: int = Field(default=4, ge=1, le=12)
+    d_model: int = Field(default=128, ge=1, le=768)
+    n_head: int = Field(default=4, ge=1)
+    ctx_len: int = Field(default=512)
+    vocab_size: int | None = None
+    dropout: float = Field(default=0.0, ge=0.0, le=0.5)
+
+
+class ModelPreviewOut(BaseModel):
+    valid: bool
+    param_count: int = 0
+    estimated_memory_bytes: int = 0
+    estimated_memory_mb: float = 0.0
+    vocab_size: int = 0
+    error: str | None = None
+
+
+class VocabularyOut(BaseModel):
+    dataset_id: uuid.UUID
+    dataset_name: str
+    vocab_size: int
+    requested_vocab_size: int
+    train_tokens: int
+    trained_on_documents: int
 
 
 class ModelOut(BaseModel):
@@ -216,6 +394,7 @@ class ModelOut(BaseModel):
     dropout: float
     param_count: int
     config: dict
+    estimated_memory_bytes: int | None = None
     created_at: datetime
 
 
@@ -234,7 +413,10 @@ class RunOut(BaseModel):
     id: uuid.UUID
     name: str
     model_id: uuid.UUID
+    model_name: str | None = None
+    model_preset: str | None = None
     dataset_id: uuid.UUID | None
+    dataset_name: str | None = None
     status: str
     device: str
     batch_size: int
@@ -243,6 +425,7 @@ class RunOut(BaseModel):
     current_step: int
     loss: float | None
     eval_loss: float | None
+    best_val_loss: float | None = None
     tokens_per_sec: float | None
     metrics: dict
     hyperparams: dict
@@ -264,3 +447,21 @@ class CheckpointOut(BaseModel):
     is_best: bool
     metrics: dict
     created_at: datetime
+
+
+class MetricPointOut(BaseModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    step: int
+    loss: float | None
+    val_loss: float | None
+    learning_rate: float | None
+    speed: float | None
+    tokens_per_sec: float | None = None
+    created_at: datetime
+
+
+class RunMetricsOut(BaseModel):
+    run_id: uuid.UUID
+    items: list[MetricPointOut]
+    total: int

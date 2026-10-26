@@ -53,9 +53,18 @@ DOCUMENT_STATUSES = ("pending", "parsed", "failed", "rejected")
 SOURCE_FORMATS = ("txt", "md", "html", "pdf", "docx", "image", "jsonl", "other")
 DATASET_STATUSES = ("draft", "processing", "ready", "failed")
 JOB_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-JOB_TYPES = ("tokenization", "training", "eval", "ingest", "export")
+JOB_TYPES = (
+    "tokenization",
+    "training",
+    "eval",
+    "ingest",
+    "export",
+    "tokenizer_train",
+    "dataset_build",
+)
+ARTIFACT_STATUSES = ("pending", "building", "ready", "failed", "cancelled")
 RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
-MODEL_PRESETS = ("nano", "micro", "small", "custom")
+MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:
@@ -137,6 +146,9 @@ class Job(Base):
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     progress: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
@@ -225,4 +237,72 @@ class Checkpoint(Base):
         UniqueConstraint("run_id", "step", name="uq_checkpoints_run_step"),
         Index("ix_checkpoints_run_id", "run_id"),
         Index("ix_checkpoints_is_best", "is_best"),
+    )
+
+
+class MetricPoint(Base):
+    __tablename__ = "metric_points"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
+    )
+    step: Mapped[int] = mapped_column(Integer, nullable=False)
+    loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    val_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    learning_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "step", name="uq_metric_points_run_step"),
+        Index("ix_metric_points_run_id", "run_id"),
+        Index("ix_metric_points_run_step", "run_id", "step"),
+    )
+
+
+class Tokenizer(Base):
+    __tablename__ = "tokenizers"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    dataset_name: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_vocab_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    vocab_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    trained_on: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    artifact_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(_sql_in("status", ARTIFACT_STATUSES), name="ck_tokenizers_status"),
+        CheckConstraint("requested_vocab_size BETWEEN 257 AND 65535", name="ck_tokenizers_vocab"),
+    )
+
+
+class DatasetBuild(Base):
+    __tablename__ = "dataset_builds"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    tokenizer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("tokenizers.id", ondelete="RESTRICT"), nullable=False
+    )
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    dataset_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    manifest_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stats: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(_sql_in("status", ARTIFACT_STATUSES), name="ck_builds_status"),
+        Index("ix_dataset_builds_tokenizer_id", "tokenizer_id"),
     )

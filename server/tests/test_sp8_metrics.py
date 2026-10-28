@@ -52,9 +52,9 @@ def test_metric_buffer_batching_and_pending(tmp_path):
     assert buffer.pending_count == 5
 
     with SessionMaker() as session:
-        persisted = session.execute(
-            select(MetricPoint).where(MetricPoint.run_id == run_id)
-        ).scalars().all()
+        persisted = (
+            session.execute(select(MetricPoint).where(MetricPoint.run_id == run_id)).scalars().all()
+        )
         assert len(persisted) == 40
 
     # Flushing commits the remaining 5 points
@@ -63,9 +63,9 @@ def test_metric_buffer_batching_and_pending(tmp_path):
     assert buffer.pending_count == 0
 
     with SessionMaker() as session:
-        persisted = session.execute(
-            select(MetricPoint).where(MetricPoint.run_id == run_id)
-        ).scalars().all()
+        persisted = (
+            session.execute(select(MetricPoint).where(MetricPoint.run_id == run_id)).scalars().all()
+        )
         assert len(persisted) == 45
     engine.dispose()
 

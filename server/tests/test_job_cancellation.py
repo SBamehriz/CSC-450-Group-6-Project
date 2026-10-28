@@ -1,14 +1,14 @@
 """Tests for Sprint 8 job cancellation cleanup (C4G6P-246)."""
-from forge.models import Job, DatasetBuild
-from forge.db import get_engine
-from sqlalchemy.orm import Session
-import uuid
-from forge import builds
-from forge import jobs
-from test_jobs import snapshot, queue_tokenizer, queue_build, job_for
-from pathlib import Path
 
-import pytest
+import uuid
+
+from sqlalchemy.orm import Session
+from test_jobs import job_for, queue_build, queue_tokenizer
+from test_jobs import snapshot as snapshot
+
+from forge import builds, jobs
+from forge.db import get_engine
+from forge.models import DatasetBuild, Job
 
 
 def test_queued_vocabulary_job_can_be_cancelled(client, snapshot):
@@ -24,12 +24,10 @@ def test_queued_vocabulary_job_can_be_cancelled(client, snapshot):
     assert response.json()["status"] == "cancelled"
 
     assert jobs.run_pending() == 0
-def test_cancelled_vocabulary_job_removes_partial_output(
-    client, snapshot, data_dir, monkeypatch
-):
-    """Cancelling a running vocabulary job removes incomplete output."""
 
-    from forge import builds
+
+def test_cancelled_vocabulary_job_removes_partial_output(client, snapshot, data_dir, monkeypatch):
+    """Cancelling a running vocabulary job removes incomplete output."""
 
     target = queue_tokenizer(client, snapshot)
     job = job_for(client, target)
@@ -68,12 +66,10 @@ def test_cancelled_vocabulary_job_removes_partial_output(
         assert db_job is not None
         assert db_job.status == "cancelled"
         assert db_job.cancel_requested is True
-def test_cancelled_dataset_build_removes_partial_output(
-    client, snapshot, data_dir, monkeypatch
-):
-    """A cancelled dataset build must not leave incomplete output."""
 
-    from forge import builds
+
+def test_cancelled_dataset_build_removes_partial_output(client, snapshot, data_dir, monkeypatch):
+    """A cancelled dataset build must not leave incomplete output."""
 
     ready_tokenizer = queue_tokenizer(client, snapshot)
     assert jobs.run_pending() == 1
@@ -126,6 +122,7 @@ def test_cancelled_dataset_build_removes_partial_output(
         assert db_build is not None
         assert db_build.status == "cancelled"
         assert db_build.manifest_uri is None
+
 
 def test_database_schema(engine):
     from sqlalchemy import inspect

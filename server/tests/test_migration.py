@@ -260,4 +260,3 @@ def test_upgrade_from_0002_to_0003_preserves_existing_data(tmp_path: Path):
         assert loaded_mp.speed == 13500.0
 
     engine2.dispose()
-

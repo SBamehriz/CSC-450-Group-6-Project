@@ -25,7 +25,14 @@ function count(dataset: Dataset, key: string): number {
 export default function DatasetsPage() {
   const queryClient = useQueryClient();
   const buckets = useQuery({ queryKey: ['buckets'], queryFn: api.listBuckets });
-  const datasets = useQuery({ queryKey: ['datasets'], queryFn: api.listDatasets });
+  const datasets = useQuery({
+    queryKey: ['datasets'],
+    queryFn: api.listDatasets,
+    refetchInterval: (query) =>
+      query.state.data?.items.some((d) => d.status === 'queued' || d.status === 'processing')
+        ? 2000
+        : false,
+  });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [params] = useSearchParams();
@@ -37,6 +44,7 @@ export default function DatasetsPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['datasets'] });
     void queryClient.invalidateQueries({ queryKey: ['overview'] });
+    void queryClient.invalidateQueries({ queryKey: ['jobs'] });
   };
   const create = useMutation({
     mutationFn: () =>
@@ -59,7 +67,7 @@ export default function DatasetsPage() {
   });
   const eligible =
     buckets.data?.items.filter(
-      (bucket) => bucket.stats.parsed_documents >= 2 && bucket.stats.parsed_documents <= 1000,
+      (bucket) => bucket.stats.parsed_documents >= 2 && bucket.id !== 'large',
     ) ?? [];
   const selectedBucket = bucketId
     ? eligible.some((bucket) => bucket.id === bucketId)
@@ -165,7 +173,7 @@ export default function DatasetsPage() {
               </label>
               {unavailableSource ? (
                 <Notice tone="warn">
-                  The requested bucket needs 2 to 1,000 parsed documents or is no longer available.
+                  The requested bucket needs at least 2 parsed documents or is no longer available.
                   Choose a source before building.
                 </Notice>
               ) : null}
@@ -218,12 +226,12 @@ export default function DatasetsPage() {
                 </button>
                 <p className="hint dataset-hint">
                   {!eligible.length
-                    ? 'Add 2 to 1,000 parsed documents to one collection first.'
+                    ? 'Add at least 2 parsed documents to one collection first.'
                     : !name.trim()
                       ? 'Give the snapshot a name first.'
                       : !validSplit || !validSeed
                         ? 'Check the split settings.'
-                        : 'Up to 50 MB of cleaned text. Quality flags do not exclude a file.'}
+                        : 'Cleaned text from the collection. Quality flags do not exclude a file.'}
                 </p>
               </div>
               {create.error ? <Notice tone="bad">{create.error.message}</Notice> : null}
@@ -231,6 +239,10 @@ export default function DatasetsPage() {
                 <p role="status">
                   Saved {create.data.name}.{' '}
                   <a href={api.datasetDownloadUrl(create.data.id)}>Download your snapshot →</a>
+                </p>
+              ) : create.data ? (
+                <p role="status">
+                  Building snapshot {create.data.name} in background. Track progress below.
                 </p>
               ) : null}
             </form>
@@ -323,10 +335,24 @@ export default function DatasetsPage() {
                 <h3 className="h2">{dataset.name}</h3>
                 <Chip
                   tone={
-                    dataset.download_ready ? 'ok' : dataset.status === 'failed' ? 'bad' : 'idle'
+                    dataset.download_ready
+                      ? 'ok'
+                      : dataset.status === 'failed'
+                        ? 'bad'
+                        : dataset.status === 'processing'
+                          ? 'warn'
+                          : 'idle'
                   }
                 >
-                  {dataset.download_ready ? 'Saved ZIP' : 'Needs a new snapshot'}
+                  {dataset.download_ready
+                    ? 'Saved ZIP'
+                    : dataset.status === 'processing'
+                      ? 'Building snapshot…'
+                      : dataset.status === 'queued'
+                        ? 'Queued'
+                        : dataset.status === 'failed'
+                          ? 'Failed'
+                          : 'Needs a new snapshot'}
                 </Chip>
               </div>
               <p className="muted">

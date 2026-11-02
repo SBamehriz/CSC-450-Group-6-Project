@@ -15,6 +15,7 @@ import {
   type Tone,
 } from '../components/ui';
 import UploadPanel from '../components/UploadPanel';
+import ImportDatasetPanel from '../components/ImportDatasetPanel';
 import ExtractionDetails from '../components/ExtractionDetails';
 import TextPreview from '../components/TextPreview';
 import { compactNumber, plural } from '../lib/format';
@@ -140,7 +141,25 @@ export default function BucketDetailPage() {
         </Link>
       </div>
 
+      {bucket.data.source_dataset ? (
+        <div className="help-panel" style={{ background: 'var(--color-surface-soft)' }}>
+          <p>
+            <strong>Hugging Face source:</strong> {bucket.data.source_dataset} &bull; config:{' '}
+            <code>{bucket.data.dataset_config}</code> &bull; split:{' '}
+            <code>{bucket.data.dataset_split}</code> &bull; column:{' '}
+            <code>{bucket.data.text_column}</code> &bull; limit: {bucket.data.import_limit} &bull;{' '}
+            revision: <code>{bucket.data.resolved_revision?.slice(0, 7)}</code>
+          </p>
+        </div>
+      ) : null}
+
       <UploadPanel key={bucketId} bucketId={bucketId} onUploaded={() => setOffset(0)} />
+
+      <ImportDatasetPanel
+        key={`import-${bucketId}`}
+        bucketId={bucketId}
+        onImportQueued={() => setOffset(0)}
+      />
 
       {openId && selected.isPending ? (
         <p className="muted" role="status">

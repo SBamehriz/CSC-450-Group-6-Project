@@ -180,6 +180,7 @@ const ICONS = {
   history: 'M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5',
   pieces: 'M4 6h7v5H4zM13 6h7v5h-7zM4 13h4v5H4zM10 13h10v5H10z',
   tokens: 'M5 5h14M5 9h14M5 13h9M5 17h6M17 14l3 3-3 3',
+  eval: 'M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
 } as const;
 
 export function Icon({ name }: { name: keyof typeof ICONS }) {

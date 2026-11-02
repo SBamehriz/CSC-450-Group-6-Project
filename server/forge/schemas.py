@@ -59,6 +59,13 @@ class BucketOut(BaseModel):
     description: str
     created_at: datetime
     stats: BucketStats
+    source_dataset: str | None = None
+    resolved_revision: str | None = None
+    dataset_config: str | None = None
+    dataset_split: str | None = None
+    text_column: str | None = None
+    import_limit: int | None = None
+
 
 
 class DocumentOut(BaseModel):
@@ -175,6 +182,7 @@ class DatasetOut(BaseModel):
     created_at: datetime
     download_ready: bool = False
     readiness_note: str = ""
+    job_id: uuid.UUID | None = None
 
 
 class SnapshotCheck(BaseModel):
@@ -279,6 +287,61 @@ class JobProgress(BaseModel):
     completed: int = 0
     total: int = 0
     message: str = ""
+    processed: int = 0
+    imported: int = 0
+    skipped: int = 0
+    failed: int = 0
+
+
+class HfInspectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset: str = Field(min_length=1, max_length=200)
+
+    @field_validator("dataset")
+    @classmethod
+    def _strip_dataset(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("cannot be blank")
+        return cleaned
+
+
+class HfSplitInfo(BaseModel):
+    name: str
+    num_examples: int | None = None
+
+
+class HfConfigInfo(BaseModel):
+    name: str
+    splits: list[HfSplitInfo]
+    columns: list[str]
+    text_columns: list[str]
+
+
+class HfInspectResponse(BaseModel):
+    dataset: str
+    canonical_id: str
+    sha: str
+    configs: list[HfConfigInfo]
+
+
+class DatasetImportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset: str = Field(min_length=1, max_length=200)
+    config: str = Field(min_length=1, max_length=100)
+    split: str = Field(min_length=1, max_length=100)
+    text_column: str = Field(min_length=1, max_length=100)
+    limit: int = Field(default=500, ge=1, le=50000)
+
+    @field_validator("dataset", "config", "split", "text_column")
+    @classmethod
+    def _strip_fields(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("cannot be blank")
+        return cleaned
 
 
 class SnapshotSource(BaseModel):
@@ -426,6 +489,8 @@ class RunOut(BaseModel):
     loss: float | None
     eval_loss: float | None
     best_val_loss: float | None = None
+    bpb: float | None = None
+    bpb_details: dict | None = None
     tokens_per_sec: float | None
     metrics: dict
     hyperparams: dict
@@ -465,3 +530,92 @@ class RunMetricsOut(BaseModel):
     run_id: uuid.UUID
     items: list[MetricPointOut]
     total: int
+
+
+class PromptSetCreate(BaseModel):
+    name: str
+    description: str = ""
+    prompts: list[str]
+
+
+class PromptSetUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    prompts: list[str] | None = None
+
+
+class PromptSetOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str
+    prompts: list[str]
+    prompt_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class EvaluationCreate(BaseModel):
+    name: str | None = None
+    model_id: uuid.UUID
+    prompt_set_id: uuid.UUID
+    max_new_tokens: int = 32
+    temperature: float = 0.7
+
+
+class PromptEvalResult(BaseModel):
+    prompt: str
+    output: str
+    tokens_generated: int = 0
+
+
+class EvaluationOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    model_id: uuid.UUID
+    model_name: str
+    prompt_set_id: uuid.UUID | None
+    prompt_set_name: str | None
+    captured_prompts: list[str]
+    results: list[dict]
+    status: str
+    error: str | None
+    job_id: uuid.UUID | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class BpbEvaluationCreate(BaseModel):
+    name: str | None = None
+    model_id: uuid.UUID | None = None
+    imported_model_name: str | None = None
+    model_source: str = "native"
+    checkpoint_id: uuid.UUID | None = None
+    dataset_id: uuid.UUID
+    ctx_len: int | None = None
+
+
+class BpbEvaluationOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    model_id: uuid.UUID | None
+    model_name: str
+    model_source: str
+    checkpoint_id: uuid.UUID | None
+    dataset_id: uuid.UUID | None
+    dataset_name: str
+    validation_file_hash: str
+    tokenizer_identity: str
+    bpb: float | None
+    total_nll: float | None
+    scored_bytes: int | None
+    scored_tokens: int | None
+    status: str
+    error: str | None
+    settings: dict
+    job_id: uuid.UUID | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+
+

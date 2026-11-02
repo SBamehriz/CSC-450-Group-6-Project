@@ -15,7 +15,7 @@ from forge.config import get_settings
 from forge.datasets import _load_one
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import DatasetBuild, Job, Tokenizer
+from forge.models import Dataset, DatasetBuild, Job, Tokenizer
 from forge.preparation import tools_available
 from forge.schemas import (
     DatasetBuildCreate,
@@ -74,10 +74,35 @@ def _start(session: Session, job: Job) -> None:
         if job.status != "pending":
             return
         job.status = "failed"
-        target = jobs.target_for(session, job)
-        target.status = "failed"
         message = f"The background process could not start: {problem}"
-        target.error = job.error = message
+        job.error = message
+        if job.job_type == "snapshot_create":
+            target = session.get(Dataset, JobPayload.model_validate(job.payload).target_id)
+            if target:
+                target.status = "failed"
+        elif job.job_type == "eval":
+            if job.payload.get("eval_type") == "bpb":
+                bpb_eval_id = job.payload.get("bpb_eval_id")
+                if bpb_eval_id:
+                    from forge.models import BpbEvaluation
+
+                    bpb_obj = session.get(BpbEvaluation, uuid.UUID(bpb_eval_id))
+                    if bpb_obj:
+                        bpb_obj.status = "failed"
+                        bpb_obj.error = message
+            else:
+                eval_id = job.payload.get("evaluation_id")
+                if eval_id:
+                    from forge.models import Evaluation
+
+                    eval_obj = session.get(Evaluation, uuid.UUID(eval_id))
+                    if eval_obj:
+                        eval_obj.status = "failed"
+                        eval_obj.error = message
+        elif job.job_type != "dataset_import":
+            target = jobs.target_for(session, job)
+            target.status = "failed"
+            target.error = message
         job.completed_at = datetime.now(UTC)
         session.commit()
         raise ApiError(503, "runner_unavailable", message) from problem
@@ -316,6 +341,74 @@ def change_job(
     jobs.recover_jobs()
     session.execute(text("BEGIN IMMEDIATE"))
     job = _job(session, job_id)
+    if job.job_type in ("dataset_import", "snapshot_create", "eval"):
+        if action == "cancel":
+            if job.status in ("pending", "running"):
+                job.cancel_requested = True
+                if job.status == "pending":
+                    job.status = "cancelled"
+                    job.completed_at = datetime.now(UTC)
+                    if job.job_type == "snapshot_create":
+                        target = session.get(
+                            Dataset, JobPayload.model_validate(job.payload).target_id
+                        )
+                        if target and target.status != "ready":
+                            target.status = "failed"
+                    elif job.job_type == "eval":
+                        if job.payload.get("eval_type") == "bpb":
+                            bpb_eval_id = job.payload.get("bpb_eval_id")
+                            if bpb_eval_id:
+                                from forge.models import BpbEvaluation
+
+                                bpb_obj = session.get(BpbEvaluation, uuid.UUID(bpb_eval_id))
+                                if bpb_obj and bpb_obj.status in ("pending", "running"):
+                                    bpb_obj.status = "cancelled"
+                        else:
+                            eval_id = job.payload.get("evaluation_id")
+                            if eval_id:
+                                from forge.models import Evaluation
+
+                                eval_obj = session.get(Evaluation, uuid.UUID(eval_id))
+                                if eval_obj and eval_obj.status in ("pending", "running"):
+                                    eval_obj.status = "cancelled"
+        else:
+            if job.status not in ("failed", "cancelled"):
+                raise ApiError(
+                    409, "not_retryable", "Only a failed or canceled job can be retried."
+                )
+            job.status = "pending"
+            job.error = None
+            job.cancel_requested = False
+            job.started_at = job.completed_at = None
+            job.progress = JobProgress().model_dump()
+            if job.job_type == "snapshot_create":
+                target = session.get(Dataset, JobPayload.model_validate(job.payload).target_id)
+                if target:
+                    target.status = "processing"
+            elif job.job_type == "eval":
+                if job.payload.get("eval_type") == "bpb":
+                    bpb_eval_id = job.payload.get("bpb_eval_id")
+                    if bpb_eval_id:
+                        from forge.models import BpbEvaluation
+
+                        bpb_obj = session.get(BpbEvaluation, uuid.UUID(bpb_eval_id))
+                        if bpb_obj:
+                            bpb_obj.status = "pending"
+                            bpb_obj.error = None
+                else:
+                    eval_id = job.payload.get("evaluation_id")
+                    if eval_id:
+                        from forge.models import Evaluation
+
+                        eval_obj = session.get(Evaluation, uuid.UUID(eval_id))
+                        if eval_obj:
+                            eval_obj.status = "pending"
+                            eval_obj.error = None
+        session.commit()
+        if action == "retry":
+            _start(session, job)
+        return JobOut.model_validate(job)
+
     target = jobs.target_for(session, job)
     if action == "cancel":
         if job.status in ("pending", "running"):

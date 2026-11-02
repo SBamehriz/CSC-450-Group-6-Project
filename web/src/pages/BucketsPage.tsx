@@ -40,7 +40,7 @@ export default function BucketsPage() {
           .includes(search.trim().toLowerCase()) &&
         (filter === 'all' ||
           (filter === 'ready'
-            ? bucket.stats.parsed_documents >= 2 && bucket.stats.parsed_documents <= 1000
+            ? bucket.stats.parsed_documents >= 2 && bucket.id !== 'large'
             : bucket.stats.documents === 0)),
     )
     .sort((a, b) =>
@@ -288,7 +288,7 @@ function CollectionCard({
   onDelete: () => void;
 }) {
   const parsed = bucket.stats.parsed_documents;
-  const ready = parsed >= 2 && parsed <= 1000;
+  const ready = parsed >= 2 && bucket.id !== 'large';
   return (
     <article className="card collection-card" aria-label={bucket.name}>
       <div className="collection-card-top">
@@ -296,7 +296,7 @@ function CollectionCard({
         <Chip tone={ready ? 'ok' : 'idle'}>
           {ready
             ? 'Ready for a snapshot'
-            : parsed > 1000
+            : bucket.id === 'large'
               ? 'Over snapshot limit'
               : bucket.stats.documents
                 ? 'Add more text'

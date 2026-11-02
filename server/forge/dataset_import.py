@@ -1,4 +1,3 @@
-
 ""
 
 import json
@@ -390,9 +389,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 rows_data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as err:
-            raise RuntimeError(
-                f"Hugging Face API returned error {err.code}: {err.reason}"
-            ) from err
+            raise RuntimeError(f"Hugging Face API returned error {err.code}: {err.reason}") from err
         except Exception as err:
             raise RuntimeError(
                 f"Network failure while streaming rows from Hugging Face: {err}"
@@ -459,9 +456,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
                 )
                 session.add(doc)
                 session.flush()
-                doc.text_uri = _write_file(
-                    f"text/{doc.id}.txt", cleaned.text.encode("utf-8")
-                )
+                doc.text_uri = _write_file(f"text/{doc.id}.txt", cleaned.text.encode("utf-8"))
                 imported += 1
 
             session.commit()

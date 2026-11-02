@@ -493,4 +493,3 @@ def delete_bpb_evaluation(
     session.delete(evaluation)
     session.commit()
     return Response(status_code=204)
-

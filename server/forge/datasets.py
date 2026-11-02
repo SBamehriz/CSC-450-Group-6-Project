@@ -33,16 +33,13 @@ def _to_out(dataset: Dataset) -> DatasetOut:
             dataset.status == "ready"
             and path.is_file()
             and (
-                not dataset.config.get("sha256")
-                or file_hash(path) == dataset.config.get("sha256")
+                not dataset.config.get("sha256") or file_hash(path) == dataset.config.get("sha256")
             )
         )
     except (ApiError, OSError):
         result.download_ready = False
     if not result.download_ready:
-        result.readiness_note = (
-            "The saved ZIP is missing or has changed. Build a new snapshot."
-        )
+        result.readiness_note = "The saved ZIP is missing or has changed. Build a new snapshot."
     return result
 
 

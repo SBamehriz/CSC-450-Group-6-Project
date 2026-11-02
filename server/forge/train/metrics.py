@@ -31,7 +31,6 @@ __all__ = [
 ]
 
 
-
 class MetricBuffer:
     """Buffers step measurements in memory and commits them in batches.
 

@@ -6,7 +6,7 @@ import { Card, CardHead } from './ui';
 
 export default function DataSteps({ buckets, stats }: { buckets: Bucket[]; stats: OverviewStats }) {
   const source = buckets.find(
-    (bucket) => bucket.stats.parsed_documents >= 2 && bucket.stats.parsed_documents <= 1000,
+    (bucket) => bucket.stats.parsed_documents >= 2 && bucket.id !== 'large',
   );
   const review = source ?? buckets.find((bucket) => bucket.stats.documents > 0);
   return (

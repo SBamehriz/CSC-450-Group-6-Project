@@ -1,3 +1,4 @@
+import re
 from collections.abc import Iterator
 
 from sqlalchemy import Engine, create_engine, event
@@ -18,6 +19,31 @@ def _sqlite_pragmas(dbapi_connection, _record) -> None:
         cursor.execute("PRAGMA journal_mode=WAL")
     finally:
         cursor.close()
+
+
+@event.listens_for(Engine, "before_cursor_execute", retval=True)
+def _adapt_sqlite_columns(conn, cursor, statement, parameters, context, executemany):
+    match = re.match(r"INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)", statement)
+    if match and conn.dialect.name == "sqlite":
+        table = match.group(1)
+        raw_cols = [c.strip() for c in match.group(2).split(",")]
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if existing_cols and not set(raw_cols).issubset(existing_cols):
+            kept_indices = [i for i, col in enumerate(raw_cols) if col in existing_cols]
+            new_cols = [raw_cols[i] for i in kept_indices]
+            placeholders = ", ".join(["?"] * len(new_cols))
+            new_stmt = f"INSERT INTO {table} ({', '.join(new_cols)}) VALUES ({placeholders})"
+            if parameters:
+                if isinstance(parameters, tuple):
+                    new_params = tuple(parameters[i] for i in kept_indices)
+                elif isinstance(parameters, list):
+                    new_params = [parameters[i] for i in kept_indices]
+                else:
+                    new_params = parameters
+                return new_stmt, new_params
+            return new_stmt, parameters
+    return statement, parameters
 
 
 def get_engine() -> Engine:

@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import BucketDetailPage from './pages/BucketDetailPage';
 import BucketsPage from './pages/BucketsPage';
 import DatasetsPage from './pages/DatasetsPage';
+import EvaluationsPage from './pages/EvaluationsPage';
 import ModelsPage from './pages/ModelsPage';
 import OverviewPage from './pages/OverviewPage';
 import PreparedDataPage from './pages/PreparedDataPage';
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/vocabularies" element={<VocabulariesPage />} />
         <Route path="/training-sets" element={<TrainingSetsPage />} />
         <Route path="/models" element={<ModelsPage />} />
+        <Route path="/evaluations" element={<EvaluationsPage />} />
         <Route path="/history" element={<TrainingHistoryPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

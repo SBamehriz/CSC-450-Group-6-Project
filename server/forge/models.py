@@ -18,6 +18,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
+import forge.db  # noqa: F401
+
 
 class Base(DeclarativeBase):
     pass
@@ -61,10 +63,14 @@ JOB_TYPES = (
     "export",
     "tokenizer_train",
     "dataset_build",
+    "dataset_import",
+    "snapshot_create",
 )
 ARTIFACT_STATUSES = ("pending", "building", "ready", "failed", "cancelled")
 RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
 MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
+EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
+BPB_EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:
@@ -78,6 +84,12 @@ class Bucket(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source_dataset: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_revision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dataset_config: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dataset_split: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text_column: Mapped[str | None] = mapped_column(Text, nullable=True)
+    import_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -110,6 +122,7 @@ class Document(Base):
         UniqueConstraint("bucket_id", "content_hash", name="uq_documents_bucket_hash"),
         Index("ix_documents_bucket_id", "bucket_id"),
         Index("ix_documents_status", "status"),
+        Index("ix_documents_bucket_status", "bucket_id", "status"),
     )
 
 
@@ -306,3 +319,96 @@ class DatasetBuild(Base):
         CheckConstraint(_sql_in("status", ARTIFACT_STATUSES), name="ck_builds_status"),
         Index("ix_dataset_builds_tokenizer_id", "tokenizer_id"),
     )
+
+
+class PromptSet(Base):
+    __tablename__ = "prompt_sets"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    prompts: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (Index("ix_prompt_sets_name", "name"),)
+
+
+class Evaluation(Base):
+    __tablename__ = "evaluations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("models.id", ondelete="RESTRICT"), nullable=False
+    )
+    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("prompt_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    prompt_set_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    captured_prompts: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    results: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(_sql_in("status", EVALUATION_STATUSES), name="ck_evaluations_status"),
+        Index("ix_evaluations_model_id", "model_id"),
+        Index("ix_evaluations_prompt_set_id", "prompt_set_id"),
+        Index("ix_evaluations_status", "status"),
+    )
+
+
+class BpbEvaluation(Base):
+    __tablename__ = "bpb_evaluations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("models.id", ondelete="SET NULL"), nullable=True
+    )
+    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    model_source: Mapped[str] = mapped_column(Text, nullable=False, default="native")
+    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("checkpoints.id", ondelete="SET NULL"), nullable=True
+    )
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("runs.id", ondelete="SET NULL"), nullable=True
+    )
+    dataset_name: Mapped[str] = mapped_column(Text, nullable=False)
+    validation_file_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    tokenizer_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    bpb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_nll: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scored_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    scored_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(
+            _sql_in("status", BPB_EVALUATION_STATUSES), name="ck_bpb_evaluations_status"
+        ),
+        Index("ix_bpb_evaluations_model_id", "model_id"),
+        Index("ix_bpb_evaluations_dataset_id", "dataset_id"),
+        Index("ix_bpb_evaluations_status", "status"),
+    )
+
+

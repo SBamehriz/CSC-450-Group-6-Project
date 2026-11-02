@@ -58,6 +58,46 @@ export interface paths {
     patch: operations['update_bucket_api_buckets__bucket_id__patch'];
     trace?: never;
   };
+  '/api/buckets/huggingface/inspect': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Inspect Hf Dataset
+     * @description Inspect a public Hugging Face dataset, returning configurations, splits, and columns.
+     */
+    post: operations['inspect_hf_dataset_api_buckets_huggingface_inspect_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/buckets/{bucket_id}/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start Dataset Import
+     * @description Queue a background import job to stream Hugging Face records into this collection.
+     */
+    post: operations['start_dataset_import_api_buckets__bucket_id__import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/buckets/{bucket_id}/documents': {
     parameters: {
       query?: never;
@@ -581,6 +621,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/runs/{run_id}/bpb': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Compute Run Bpb
+     * @description Launch a real bits-per-byte recomputation for a run using its saved model and snapshot.
+     */
+    post: operations['compute_run_bpb_api_runs__run_id__bpb_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/tokenizers': {
     parameters: {
       query?: never;
@@ -755,6 +815,158 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/prompt-sets': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Prompt Sets
+     * @description List all saved prompt sets, newest first.
+     */
+    get: operations['list_prompt_sets_api_prompt_sets_get'];
+    put?: never;
+    /**
+     * Create Prompt Set
+     * @description Create a persistent named prompt set containing an ordered collection of prompts.
+     */
+    post: operations['create_prompt_set_api_prompt_sets_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/prompt-sets/{prompt_set_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Prompt Set
+     * @description Retrieve a single prompt set by ID.
+     */
+    get: operations['get_prompt_set_api_prompt_sets__prompt_set_id__get'];
+    /**
+     * Update Prompt Set
+     * @description Update a prompt set's name, description, or ordered prompts.
+     */
+    put: operations['update_prompt_set_api_prompt_sets__prompt_set_id__put'];
+    post?: never;
+    /**
+     * Delete Prompt Set
+     * @description Delete a prompt set.
+     *
+     *     Leaves previous evaluations and their captured prompts intact without cascading deletion.
+     */
+    delete: operations['delete_prompt_set_api_prompt_sets__prompt_set_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/evaluations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Evaluations
+     * @description List all model evaluations, newest first.
+     */
+    get: operations['list_evaluations_api_evaluations_get'];
+    put?: never;
+    /**
+     * Create Evaluation
+     * @description Start an evaluation on a supported model using a saved prompt set.
+     *
+     *     Captures an independent copy of the prompt contents and order.
+     */
+    post: operations['create_evaluation_api_evaluations_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/evaluations/{evaluation_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Evaluation
+     * @description Retrieve an evaluation record including captured prompts and outputs.
+     */
+    get: operations['get_evaluation_api_evaluations__evaluation_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Evaluation
+     * @description Delete an evaluation record.
+     */
+    delete: operations['delete_evaluation_api_evaluations__evaluation_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/bpb-evaluations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Bpb Evaluations
+     * @description List all BPB evaluations on held-out text, newest first.
+     */
+    get: operations['list_bpb_evaluations_api_bpb_evaluations_get'];
+    put?: never;
+    /**
+     * Create Bpb Evaluation
+     * @description Launch a bits-per-byte evaluation job on held-out text from a frozen snapshot.
+     */
+    post: operations['create_bpb_evaluation_api_bpb_evaluations_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/bpb-evaluations/{evaluation_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Bpb Evaluation
+     * @description Retrieve details for a single bits-per-byte evaluation.
+     */
+    get: operations['get_bpb_evaluation_api_bpb_evaluations__evaluation_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Bpb Evaluation
+     * @description Delete a BPB evaluation record and request job cancellation if running.
+     */
+    delete: operations['delete_bpb_evaluation_api_bpb_evaluations__evaluation_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -768,6 +980,82 @@ export interface components {
        * @default
        */
       source_note: string;
+    };
+    /** BpbEvaluationCreate */
+    BpbEvaluationCreate: {
+      /** Name */
+      name?: string | null;
+      /** Model Id */
+      model_id?: string | null;
+      /** Imported Model Name */
+      imported_model_name?: string | null;
+      /**
+       * Model Source
+       * @default native
+       */
+      model_source: string;
+      /** Checkpoint Id */
+      checkpoint_id?: string | null;
+      /**
+       * Dataset Id
+       * Format: uuid
+       */
+      dataset_id: string;
+      /** Ctx Len */
+      ctx_len?: number | null;
+    };
+    /** BpbEvaluationOut */
+    BpbEvaluationOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Model Id */
+      model_id: string | null;
+      /** Model Name */
+      model_name: string;
+      /** Model Source */
+      model_source: string;
+      /** Checkpoint Id */
+      checkpoint_id: string | null;
+      /** Dataset Id */
+      dataset_id: string | null;
+      /** Dataset Name */
+      dataset_name: string;
+      /** Validation File Hash */
+      validation_file_hash: string;
+      /** Tokenizer Identity */
+      tokenizer_identity: string;
+      /** Bpb */
+      bpb: number | null;
+      /** Total Nll */
+      total_nll: number | null;
+      /** Scored Bytes */
+      scored_bytes: number | null;
+      /** Scored Tokens */
+      scored_tokens: number | null;
+      /** Status */
+      status: string;
+      /** Error */
+      error: string | null;
+      /** Settings */
+      settings: {
+        [key: string]: unknown;
+      };
+      /** Job Id */
+      job_id: string | null;
+      /** Started At */
+      started_at: string | null;
+      /** Completed At */
+      completed_at: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** BucketCreate */
     BucketCreate: {
@@ -796,6 +1084,18 @@ export interface components {
        */
       created_at: string;
       stats: components['schemas']['BucketStats'];
+      /** Source Dataset */
+      source_dataset?: string | null;
+      /** Resolved Revision */
+      resolved_revision?: string | null;
+      /** Dataset Config */
+      dataset_config?: string | null;
+      /** Dataset Split */
+      dataset_split?: string | null;
+      /** Text Column */
+      text_column?: string | null;
+      /** Import Limit */
+      import_limit?: number | null;
     };
     /** BucketStats */
     BucketStats: {
@@ -887,6 +1187,22 @@ export interface components {
        */
       seed: number;
     };
+    /** DatasetImportCreate */
+    DatasetImportCreate: {
+      /** Dataset */
+      dataset: string;
+      /** Config */
+      config: string;
+      /** Split */
+      split: string;
+      /** Text Column */
+      text_column: string;
+      /**
+       * Limit
+       * @default 500
+       */
+      limit: number;
+    };
     /** DatasetOut */
     DatasetOut: {
       /**
@@ -929,6 +1245,8 @@ export interface components {
        * @default
        */
       readiness_note: string;
+      /** Job Id */
+      job_id?: string | null;
     };
     /** DocumentOut */
     DocumentOut: {
@@ -982,6 +1300,73 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** EvaluationCreate */
+    EvaluationCreate: {
+      /** Name */
+      name?: string | null;
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /**
+       * Prompt Set Id
+       * Format: uuid
+       */
+      prompt_set_id: string;
+      /**
+       * Max New Tokens
+       * @default 32
+       */
+      max_new_tokens: number;
+      /**
+       * Temperature
+       * @default 0.7
+       */
+      temperature: number;
+    };
+    /** EvaluationOut */
+    EvaluationOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /** Model Name */
+      model_name: string;
+      /** Prompt Set Id */
+      prompt_set_id: string | null;
+      /** Prompt Set Name */
+      prompt_set_name: string | null;
+      /** Captured Prompts */
+      captured_prompts: string[];
+      /** Results */
+      results: {
+        [key: string]: unknown;
+      }[];
+      /** Status */
+      status: string;
+      /** Error */
+      error: string | null;
+      /** Job Id */
+      job_id: string | null;
+      /** Started At */
+      started_at: string | null;
+      /** Completed At */
+      completed_at: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
     /** GpuCard */
     GpuCard: {
       /** Index */
@@ -1022,6 +1407,40 @@ export interface components {
       status: string;
       /** Database */
       database: string;
+    };
+    /** HfConfigInfo */
+    HfConfigInfo: {
+      /** Name */
+      name: string;
+      /** Splits */
+      splits: components['schemas']['HfSplitInfo'][];
+      /** Columns */
+      columns: string[];
+      /** Text Columns */
+      text_columns: string[];
+    };
+    /** HfInspectRequest */
+    HfInspectRequest: {
+      /** Dataset */
+      dataset: string;
+    };
+    /** HfInspectResponse */
+    HfInspectResponse: {
+      /** Dataset */
+      dataset: string;
+      /** Canonical Id */
+      canonical_id: string;
+      /** Sha */
+      sha: string;
+      /** Configs */
+      configs: components['schemas']['HfConfigInfo'][];
+    };
+    /** HfSplitInfo */
+    HfSplitInfo: {
+      /** Name */
+      name: string;
+      /** Num Examples */
+      num_examples?: number | null;
     };
     /** JobOut */
     JobOut: {
@@ -1419,6 +1838,53 @@ export interface components {
       /** Memory */
       memory: components['schemas']['PresetMemory'][];
     };
+    /** PromptSetCreate */
+    PromptSetCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Prompts */
+      prompts: string[];
+    };
+    /** PromptSetOut */
+    PromptSetOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Description */
+      description: string;
+      /** Prompts */
+      prompts: string[];
+      /** Prompt Count */
+      prompt_count: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /** PromptSetUpdate */
+    PromptSetUpdate: {
+      /** Name */
+      name?: string | null;
+      /** Description */
+      description?: string | null;
+      /** Prompts */
+      prompts?: string[] | null;
+    };
     /** RecentUpload */
     RecentUpload: {
       /**
@@ -1555,6 +2021,12 @@ export interface components {
       eval_loss: number | null;
       /** Best Val Loss */
       best_val_loss?: number | null;
+      /** Bpb */
+      bpb?: number | null;
+      /** Bpb Details */
+      bpb_details?: {
+        [key: string]: unknown;
+      } | null;
       /** Tokens Per Sec */
       tokens_per_sec: number | null;
       /** Metrics */
@@ -1902,6 +2374,74 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['BucketOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  inspect_hf_dataset_api_buckets_huggingface_inspect_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['HfInspectRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HfInspectResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_dataset_import_api_buckets__bucket_id__import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        bucket_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DatasetImportCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
         };
       };
       /** @description Validation Error */
@@ -2999,6 +3539,37 @@ export interface operations {
       };
     };
   };
+  compute_run_bpb_api_runs__run_id__bpb_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BpbEvaluationOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_tokenizers_api_tokenizers_get: {
     parameters: {
       query?: {
@@ -3427,6 +3998,380 @@ export interface operations {
         content: {
           'application/json': components['schemas']['JobOut'];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_prompt_sets_api_prompt_sets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PromptSetOut'][];
+        };
+      };
+    };
+  };
+  create_prompt_set_api_prompt_sets_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PromptSetCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PromptSetOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_prompt_set_api_prompt_sets__prompt_set_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        prompt_set_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PromptSetOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_prompt_set_api_prompt_sets__prompt_set_id__put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        prompt_set_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PromptSetUpdate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PromptSetOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_prompt_set_api_prompt_sets__prompt_set_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        prompt_set_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_evaluations_api_evaluations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvaluationOut'][];
+        };
+      };
+    };
+  };
+  create_evaluation_api_evaluations_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EvaluationCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvaluationOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_evaluation_api_evaluations__evaluation_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        evaluation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvaluationOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_evaluation_api_evaluations__evaluation_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        evaluation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_bpb_evaluations_api_bpb_evaluations_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BpbEvaluationOut'][];
+        };
+      };
+    };
+  };
+  create_bpb_evaluation_api_bpb_evaluations_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BpbEvaluationCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BpbEvaluationOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_bpb_evaluation_api_bpb_evaluations__evaluation_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        evaluation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BpbEvaluationOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_bpb_evaluation_api_bpb_evaluations__evaluation_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        evaluation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

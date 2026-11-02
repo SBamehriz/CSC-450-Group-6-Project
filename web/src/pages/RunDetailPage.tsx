@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 
 import { api, type MetricPoint } from '../api/client';
@@ -15,6 +15,7 @@ const STATUS_TONE: Record<string, Tone> = {
 
 export default function RunDetailPage() {
   const { runId = '' } = useParams();
+  const queryClient = useQueryClient();
 
   const run = useQuery({
     queryKey: ['run', runId],
@@ -26,6 +27,13 @@ export default function RunDetailPage() {
     queryKey: ['runMetrics', runId],
     queryFn: () => api.getRunMetrics(runId),
     enabled: Boolean(runId),
+  });
+
+  const computeBpbMutation = useMutation({
+    mutationFn: () => api.computeRunBpb(runId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['run', runId] });
+    },
   });
 
   if (run.error) {
@@ -112,6 +120,29 @@ export default function RunDetailPage() {
                 </dd>
               </div>
               <div>
+                <dt>
+                  Validation BPB{' '}
+                  <span className="muted" style={{ fontWeight: 'normal', fontSize: '0.8rem' }}>
+                    (lower is better)
+                  </span>
+                </dt>
+                <dd>
+                  {r.bpb !== null && r.bpb !== undefined ? (
+                    <span
+                      title={
+                        r.bpb_details
+                          ? `Total NLL: ${String((r.bpb_details as Record<string, unknown>).total_nll ?? '')} nats, Scored bytes: ${String((r.bpb_details as Record<string, unknown>).scored_bytes ?? '')}`
+                          : undefined
+                      }
+                    >
+                      {r.bpb.toFixed(4)}
+                    </span>
+                  ) : (
+                    <span className="muted">Unavailable</span>
+                  )}
+                </dd>
+              </div>
+              <div>
                 <dt>Training speed</dt>
                 <dd>{r.tokens_per_sec ? `${compactNumber(r.tokens_per_sec)} tok/s` : '—'}</dd>
               </div>
@@ -120,6 +151,29 @@ export default function RunDetailPage() {
                 <dd>{points.length.toLocaleString()}</dd>
               </div>
             </dl>
+
+            {r.bpb === null || r.bpb === undefined ? (
+              <div style={{ marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={computeBpbMutation.isPending}
+                  onClick={() => computeBpbMutation.mutate()}
+                >
+                  {computeBpbMutation.isPending ? 'Computing BPB…' : 'Compute Validation BPB'}
+                </button>
+                {computeBpbMutation.isError ? (
+                  <p className="notice notice-bad" style={{ marginTop: '0.5rem' }}>
+                    {computeBpbMutation.error.message}
+                  </p>
+                ) : null}
+                {computeBpbMutation.isSuccess ? (
+                  <p className="notice notice-good" style={{ marginTop: '0.5rem' }}>
+                    BPB evaluation job launched. Check status in background jobs.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             {r.error ? (
               <p className="notice notice-bad" role="alert">

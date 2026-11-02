@@ -16,10 +16,20 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from forge.core.metrics import BpbAccumulator, calculate_bpb
 from forge.models import Checkpoint, MetricPoint, Run
 
 if TYPE_CHECKING:
     pass
+
+__all__ = [
+    "BpbAccumulator",
+    "MetricBuffer",
+    "calculate_bpb",
+    "get_best_validation_loss",
+    "get_metric_points",
+]
+
 
 
 class MetricBuffer:

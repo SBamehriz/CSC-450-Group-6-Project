@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { api, type GpuCheck, type Model, type ModelCreate, type Preset } from '../api/client';
 import {
@@ -584,12 +585,17 @@ export default function ModelsPage() {
                         </td>
                         <td>{relativeDate(m.created_at)}</td>
                         <td>
-                          <ConfirmButton
-                            label="Delete"
-                            confirmLabel="Delete model"
-                            onConfirm={() => remove.mutate(m.id)}
-                            disabled={remove.isPending}
-                          />
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <Link className="btn btn-sm" to={`/evaluations?model=${m.id}`}>
+                              Evaluate
+                            </Link>
+                            <ConfirmButton
+                              label="Delete"
+                              confirmLabel="Delete model"
+                              onConfirm={() => remove.mutate(m.id)}
+                              disabled={remove.isPending}
+                            />
+                          </div>
                         </td>
                       </tr>
                     );

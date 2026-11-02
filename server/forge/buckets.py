@@ -4,10 +4,23 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from forge import jobs
+from forge.dataset_import import inspect_dataset, validate_import_params
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import Bucket, Document
-from forge.schemas import BucketCreate, BucketOut, BucketStats, BucketUpdate, Page
+from forge.models import Bucket, Document, Job
+from forge.schemas import (
+    BucketCreate,
+    BucketOut,
+    BucketStats,
+    BucketUpdate,
+    DatasetImportCreate,
+    HfInspectRequest,
+    HfInspectResponse,
+    JobOut,
+    JobPayload,
+    Page,
+)
 
 router = APIRouter(prefix="/buckets", tags=["buckets"])
 
@@ -32,6 +45,12 @@ def _to_out(bucket: Bucket, documents: int, parsed: int, chars: int) -> BucketOu
         id=bucket.id,
         name=bucket.name,
         description=bucket.description,
+        source_dataset=bucket.source_dataset,
+        resolved_revision=bucket.resolved_revision,
+        dataset_config=bucket.dataset_config,
+        dataset_split=bucket.dataset_split,
+        text_column=bucket.text_column,
+        import_limit=bucket.import_limit,
         created_at=bucket.created_at,
         stats=BucketStats(
             documents=documents,
@@ -50,11 +69,12 @@ def _load_one(session: Session, bucket_id: uuid.UUID) -> Bucket:
 
 
 def _stats_for(session: Session, bucket_id: uuid.UUID) -> tuple[int, int, int]:
-    stats = _stats_subquery()
     row = session.execute(
-        select(stats.c.documents, stats.c.parsed_documents, stats.c.chars).where(
-            stats.c.bucket_id == bucket_id
-        )
+        select(
+            func.count(),
+            func.count().filter(Document.status == "parsed"),
+            func.coalesce(func.sum(Document.char_count), 0),
+        ).where(Document.bucket_id == bucket_id)
     ).one_or_none()
     return (0, 0, 0) if row is None else (row[0], row[1], row[2])
 
@@ -134,3 +154,33 @@ def delete_bucket(bucket_id: uuid.UUID, session: Session = Depends(get_session))
     session.delete(bucket)
     session.commit()
     return Response(status_code=204)
+
+
+@router.post("/huggingface/inspect", response_model=HfInspectResponse)
+def inspect_hf_dataset(payload: HfInspectRequest) -> HfInspectResponse:
+    """Inspect a public Hugging Face dataset, returning configurations, splits, and columns."""
+    return inspect_dataset(payload.dataset)
+
+
+@router.post("/{bucket_id}/import", response_model=JobOut, status_code=201)
+def start_dataset_import(
+    bucket_id: uuid.UUID,
+    payload: DatasetImportCreate,
+    session: Session = Depends(get_session),
+) -> JobOut:
+    """Queue a background import job to stream Hugging Face records into this collection."""
+    bucket = _load_one(session, bucket_id)
+    validate_import_params(payload.dataset, payload)
+
+    job = Job(
+        job_type="dataset_import",
+        payload={
+            **JobPayload(target_id=bucket.id, target_name=bucket.name).model_dump(mode="json"),
+            **payload.model_dump(mode="json"),
+        },
+    )
+    session.add(job)
+    session.commit()
+    jobs.start_runner()
+    return JobOut.model_validate(job)
+

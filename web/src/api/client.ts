@@ -29,6 +29,17 @@ export type TokenizerCreate = components['schemas']['TokenizerCreate'];
 export type DatasetBuild = components['schemas']['DatasetBuildOut'];
 export type DatasetBuildCreate = components['schemas']['DatasetBuildCreate'];
 export type Job = components['schemas']['JobOut'];
+export type HfInspectResponse = components['schemas']['HfInspectResponse'];
+export type HfConfigInfo = components['schemas']['HfConfigInfo'];
+export type HfSplitInfo = components['schemas']['HfSplitInfo'];
+export type DatasetImportCreate = components['schemas']['DatasetImportCreate'];
+export type PromptSet = components['schemas']['PromptSetOut'];
+export type PromptSetCreate = components['schemas']['PromptSetCreate'];
+export type PromptSetUpdate = components['schemas']['PromptSetUpdate'];
+export type Evaluation = components['schemas']['EvaluationOut'];
+export type EvaluationCreate = components['schemas']['EvaluationCreate'];
+export type BpbEvaluation = components['schemas']['BpbEvaluationOut'];
+export type BpbEvaluationCreate = components['schemas']['BpbEvaluationCreate'];
 
 export const DOCUMENT_PAGE = 50;
 export const RUN_PAGE = 20;
@@ -244,4 +255,39 @@ export const api = {
   listJobs: () => request<{ items: Job[]; total: number }>('/jobs?limit=20&offset=0'),
   changeJob: (id: string, action: 'cancel' | 'retry') =>
     request<Job>(`/jobs/${id}/${action}`, { method: 'POST' }),
+  inspectHfDataset: (dataset: string) =>
+    request<HfInspectResponse>('/buckets/huggingface/inspect', {
+      method: 'POST',
+      body: JSON.stringify({ dataset }),
+    }),
+  importDataset: (bucketId: string, payload: DatasetImportCreate) =>
+    request<Job>(`/buckets/${bucketId}/import`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  // Prompt Sets & Evaluation (SP9.12)
+  listPromptSets: () => request<PromptSet[]>('/prompt-sets'),
+  getPromptSet: (id: string) => request<PromptSet>(`/prompt-sets/${id}`),
+  createPromptSet: (payload: PromptSetCreate) =>
+    request<PromptSet>('/prompt-sets', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePromptSet: (id: string, payload: PromptSetUpdate) =>
+    request<PromptSet>(`/prompt-sets/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deletePromptSet: (id: string) => request<void>(`/prompt-sets/${id}`, { method: 'DELETE' }),
+
+  listEvaluations: () => request<Evaluation[]>('/evaluations'),
+  getEvaluation: (id: string) => request<Evaluation>(`/evaluations/${id}`),
+  createEvaluation: (payload: EvaluationCreate) =>
+    request<Evaluation>('/evaluations', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteEvaluation: (id: string) => request<void>(`/evaluations/${id}`, { method: 'DELETE' }),
+
+  // Bits Per Byte (BPB) Evaluations (SP9.11)
+  listBpbEvaluations: () => request<BpbEvaluation[]>('/bpb-evaluations'),
+  getBpbEvaluation: (id: string) => request<BpbEvaluation>(`/bpb-evaluations/${id}`),
+  createBpbEvaluation: (payload: BpbEvaluationCreate) =>
+    request<BpbEvaluation>('/bpb-evaluations', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteBpbEvaluation: (id: string) =>
+    request<void>(`/bpb-evaluations/${id}`, { method: 'DELETE' }),
+  computeRunBpb: (runId: string) =>
+    request<BpbEvaluation>(`/runs/${runId}/bpb`, { method: 'POST' }),
 };

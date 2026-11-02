@@ -16,15 +16,51 @@ export const tones: Record<string, Tone> = {
 };
 
 function targetName(job: Job): string {
-  return typeof job.payload.target_name === 'string' ? job.payload.target_name : 'Job';
+  if (typeof job.payload.target_name === 'string') return job.payload.target_name;
+  if (job.job_type === 'eval') return 'Model Evaluation';
+  return 'Job';
 }
 
-function progress(job: Job): { completed: number; total: number; message: string } {
-  const value = job.progress as { completed?: number; total?: number; message?: string };
+function targetLink(job: Job): string {
+  if (job.job_type === 'dataset_import') {
+    const targetId = typeof job.payload.target_id === 'string' ? job.payload.target_id : '';
+    return targetId ? `/data/${targetId}` : '/data';
+  }
+  if (job.job_type === 'snapshot_create') {
+    return '/datasets';
+  }
+  if (job.job_type === 'eval') {
+    return '/evaluations';
+  }
+  return job.job_type === 'dataset_build' ? '/training-sets' : '/vocabularies';
+}
+
+function progress(job: Job): {
+  completed: number;
+  total: number;
+  message: string;
+  processed?: number;
+  imported?: number;
+  skipped?: number;
+  failed?: number;
+} {
+  const value = job.progress as {
+    completed?: number;
+    total?: number;
+    message?: string;
+    processed?: number;
+    imported?: number;
+    skipped?: number;
+    failed?: number;
+  };
   return {
     completed: value.completed ?? 0,
     total: value.total ?? 0,
     message: value.message ?? '',
+    processed: value.processed,
+    imported: value.imported,
+    skipped: value.skipped,
+    failed: value.failed,
   };
 }
 
@@ -35,7 +71,15 @@ export default function JobsPanel() {
     mutationFn: ({ id, action }: { id: string; action: 'cancel' | 'retry' }) =>
       api.changeJob(id, action),
     onSuccess: () => {
-      for (const key of ['jobs', 'builds', 'tokenizers'])
+      for (const key of [
+        'jobs',
+        'builds',
+        'tokenizers',
+        'buckets',
+        'bucket',
+        'documents',
+        'overview',
+      ])
         void queryClient.invalidateQueries({ queryKey: [key] });
     },
   });
@@ -69,11 +113,7 @@ export default function JobsPanel() {
                   return (
                     <tr key={job.id}>
                       <td>
-                        <Link
-                          to={job.job_type === 'dataset_build' ? '/training-sets' : '/vocabularies'}
-                        >
-                          {targetName(job)}
-                        </Link>
+                        <Link to={targetLink(job)}>{targetName(job)}</Link>
                         <div className="muted">{relativeDate(job.created_at)}</div>
                       </td>
                       <td>
@@ -89,7 +129,15 @@ export default function JobsPanel() {
                         ) : (
                           step.message || 'Waiting to start'
                         )}
-                        {step.total ? (
+                        {job.job_type === 'dataset_import' ? (
+                          step.total > 0 ? (
+                            <div className="muted">
+                              {step.completed} / {step.total} records
+                            </div>
+                          ) : step.processed !== undefined && step.processed > 0 ? (
+                            <div className="muted">{step.processed} records processed</div>
+                          ) : null
+                        ) : step.total ? (
                           <div className="muted">
                             {step.completed} / {step.total} documents
                           </div>

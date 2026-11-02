@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import Checkpoint, Dataset, Job, Model, Run
+from forge.models import BpbEvaluation, Checkpoint, Dataset, Job, Model, Run
 from forge.schemas import (
+    BpbEvaluationOut,
     MetricPointOut,
     Page,
     RunCreate,
@@ -23,6 +24,34 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
     model = session.get(Model, run.model_id) if run.model_id else None
     dataset = session.get(Dataset, run.dataset_id) if run.dataset_id else None
     best_val = get_best_validation_loss(session, run.id)
+
+    # Resolve BPB if recorded in metrics or associated BpbEvaluation
+    bpb_val: float | None = None
+    bpb_details: dict | None = None
+    if run.metrics and isinstance(run.metrics, dict):
+        if "bpb" in run.metrics and isinstance(run.metrics["bpb"], (int, float)):
+            bpb_val = float(run.metrics["bpb"])
+            bpb_details = run.metrics.get("bpb_details")
+
+    if bpb_val is None and run.id:
+        completed_eval = session.execute(
+            select(BpbEvaluation)
+            .where(BpbEvaluation.run_id == run.id, BpbEvaluation.status == "completed")
+            .order_by(BpbEvaluation.completed_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if completed_eval and completed_eval.bpb is not None:
+            bpb_val = completed_eval.bpb
+            bpb_details = {
+                "bpb_eval_id": str(completed_eval.id),
+                "bpb": completed_eval.bpb,
+                "total_nll": completed_eval.total_nll,
+                "scored_bytes": completed_eval.scored_bytes,
+                "scored_tokens": completed_eval.scored_tokens,
+                "validation_file_hash": completed_eval.validation_file_hash,
+                "model_name": completed_eval.model_name,
+                "tokenizer_identity": completed_eval.tokenizer_identity,
+            }
 
     return RunOut(
         id=run.id,
@@ -41,6 +70,8 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
         loss=run.loss,
         eval_loss=run.eval_loss,
         best_val_loss=best_val,
+        bpb=bpb_val,
+        bpb_details=bpb_details,
         tokens_per_sec=run.tokens_per_sec,
         metrics=run.metrics,
         hyperparams=run.hyperparams,
@@ -216,3 +247,111 @@ def delete_run(
     session.delete(run)
     session.commit()
     return Response(status_code=204)
+
+
+@router.post("/runs/{run_id}/bpb", response_model=BpbEvaluationOut, status_code=202)
+def compute_run_bpb(
+    run_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> BpbEvaluationOut:
+    """Launch a real bits-per-byte recomputation for a run using its saved model and snapshot."""
+    import os
+
+    from forge.core.metrics import _get_validation_file_info
+    from forge.eval_api import _bpb_eval_to_out
+
+    run = session.get(Run, run_id)
+    if not run:
+        raise ApiError(404, "not_found", "Training run not found.")
+
+    if not run.model_id:
+        raise ApiError(400, "missing_model", "Run has no associated model for BPB calculation.")
+    model = session.get(Model, run.model_id)
+    if not model:
+        raise ApiError(404, "not_found", "Associated model was removed.")
+
+    if not run.dataset_id:
+        raise ApiError(
+            400, "missing_dataset", "Run has no associated dataset snapshot for BPB calculation."
+        )
+    dataset = session.get(Dataset, run.dataset_id)
+    if not dataset or dataset.status != "ready":
+        raise ApiError(
+            400, "snapshot_not_ready", "Associated dataset snapshot is not ready or was removed."
+        )
+
+    _, val_hash = _get_validation_file_info(dataset)
+
+    latest_ckpt = session.execute(
+        select(Checkpoint)
+        .where(Checkpoint.run_id == run.id)
+        .order_by(Checkpoint.step.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    eval_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+    eval_name = f"BPB - Run {run.name} ({model.name})"[:128]
+
+    bpb_eval = BpbEvaluation(
+        id=eval_id,
+        name=eval_name,
+        model_id=model.id,
+        model_name=model.name,
+        model_source="native",
+        checkpoint_id=latest_ckpt.id if latest_ckpt else None,
+        dataset_id=dataset.id,
+        dataset_name=dataset.name,
+        validation_file_hash=val_hash,
+        tokenizer_identity="native-bpe",
+        bpb=None,
+        total_nll=None,
+        scored_bytes=None,
+        scored_tokens=None,
+        status="pending",
+        error=None,
+        settings={
+            "ctx_len": model.ctx_len,
+            "run_id": str(run.id),
+            "checkpoint_id": str(latest_ckpt.id) if latest_ckpt else None,
+        },
+        job_id=job_id,
+        run_id=run.id,
+    )
+    session.add(bpb_eval)
+
+    job = Job(
+        id=job_id,
+        job_type="eval",
+        status="pending",
+        payload={
+            "eval_type": "bpb",
+            "bpb_eval_id": str(eval_id),
+            "model_id": str(model.id),
+            "model_source": "native",
+            "checkpoint_id": str(latest_ckpt.id) if latest_ckpt else None,
+            "dataset_id": str(dataset.id),
+            "ctx_len": model.ctx_len,
+            "run_id": str(run.id),
+        },
+        progress={"current": 0, "total": 1, "stage": "Queued"},
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(bpb_eval)
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        from forge.core.metrics import execute_bpb_eval_job
+
+        execute_bpb_eval_job(job_id)
+        session.refresh(bpb_eval)
+    else:
+        try:
+            from forge.jobs import start_runner
+
+            start_runner()
+        except OSError:
+            pass
+
+    return _bpb_eval_to_out(bpb_eval)
+

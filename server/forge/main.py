@@ -12,6 +12,7 @@ from forge import (
     buckets,
     datasets,
     documents,
+    eval_api,
     jobs,
     jobs_api,
     models_api,
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     api.include_router(models_api.router)
     api.include_router(runs_api.router)
     api.include_router(jobs_api.router)
+    api.include_router(eval_api.router)
     app.include_router(api)
 
     _serve_interface(app)

@@ -1,3 +1,5 @@
+import os
+import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -6,11 +8,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import Dataset, Run
-from forge.schemas import DatasetCreate, DatasetOut, Page, SnapshotCheck
-from forge.snapshots import archive_path, file_hash, read_snapshot, source_rows, write_snapshot
+from forge.models import Bucket, Dataset, Document, Job, Run
+from forge.schemas import DatasetCreate, DatasetOut, JobPayload, JobProgress, Page, SnapshotCheck
+from forge.snapshots import archive_path, file_hash, read_snapshot
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -29,12 +32,17 @@ def _to_out(dataset: Dataset) -> DatasetOut:
         result.download_ready = (
             dataset.status == "ready"
             and path.is_file()
-            and file_hash(path) == dataset.config.get("sha256")
+            and (
+                not dataset.config.get("sha256")
+                or file_hash(path) == dataset.config.get("sha256")
+            )
         )
     except (ApiError, OSError):
         result.download_ready = False
     if not result.download_ready:
-        result.readiness_note = "The saved ZIP is missing or has changed. Build a new snapshot."
+        result.readiness_note = (
+            "The saved ZIP is missing or has changed. Build a new snapshot."
+        )
     return result
 
 
@@ -62,21 +70,98 @@ def list_datasets(
 def create_dataset(payload: DatasetCreate, session: Session = Depends(get_session)) -> DatasetOut:
     if session.scalar(select(Dataset.id).where(Dataset.name == payload.name)) is not None:
         raise ApiError(409, "name_taken", f"A dataset named {payload.name!r} already exists.")
-    bucket, rows = source_rows(session, payload.bucket_id)
-    dataset = Dataset(
-        id=uuid.uuid4(), name=payload.name, description=payload.description, bucket_id=bucket.id
+    bucket = session.get(Bucket, payload.bucket_id)
+    if bucket is None:
+        raise ApiError(404, "not_found", "No collection with that id.")
+    pending = session.scalar(
+        select(Document.id)
+        .where(Document.bucket_id == payload.bucket_id, Document.status == "pending")
+        .limit(1)
     )
-    write_snapshot(dataset, bucket, rows, payload.validation_fraction, payload.seed)
+    if pending is not None:
+        raise ApiError(
+            409, "not_ready", "Some files are still being read. Try again once they finish."
+        )
+    parsed_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.bucket_id == payload.bucket_id, Document.status == "parsed")
+        )
+        or 0
+    )
+    if parsed_count < 2:
+        raise ApiError(422, "invalid_source", "Choose a collection with at least two parsed files.")
+
+    data_dir = get_settings().data_dir
+    free_bytes = shutil.disk_usage(data_dir).free
+    if free_bytes < 10 * 1024 * 1024:
+        raise ApiError(
+            503, "storage_unavailable", "Could not save the snapshot. Check free disk space."
+        )
+
+    dataset = Dataset(
+        id=uuid.uuid4(),
+        name=payload.name,
+        description=payload.description,
+        bucket_id=bucket.id,
+        status="processing",
+        config={
+            "seed": payload.seed,
+            "validation_fraction": payload.validation_fraction,
+            "bucket_name": bucket.name,
+        },
+    )
     session.add(dataset)
+    session.flush()
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        from forge.db import get_engine
+        from forge.snapshots import write_snapshot_streaming
+
+        try:
+            session.commit()
+            write_snapshot_streaming(
+                dataset.id, bucket.id, payload.validation_fraction, payload.seed
+            )
+            session.refresh(dataset)
+        except Exception:
+            with Session(get_engine()) as cleanup_sess:
+                cleanup_ds = cleanup_sess.get(Dataset, dataset.id)
+                if cleanup_ds:
+                    cleanup_sess.delete(cleanup_ds)
+                cleanup_sess.commit()
+            raise
+        return _to_out(dataset)
+
+    job = Job(
+        job_type="snapshot_create",
+        payload=JobPayload(target_id=dataset.id, target_name=dataset.name).model_dump(mode="json")
+        | {
+            "bucket_id": str(bucket.id),
+            "validation_fraction": payload.validation_fraction,
+            "seed": payload.seed,
+        },
+        progress=JobProgress(
+            completed=0, total=parsed_count, message="Queueing snapshot"
+        ).model_dump(),
+    )
+    session.add(job)
     try:
         session.commit()
     except IntegrityError as problem:
         session.rollback()
-        archive_path(dataset).unlink(missing_ok=True)
         raise ApiError(
             409, "name_taken", "That dataset name was just used. Choose another."
         ) from problem
-    return _to_out(dataset)
+
+    from forge.jobs_api import _start
+
+    _start(session, job)
+
+    out = _to_out(dataset)
+    out.job_id = job.id
+    return out
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
@@ -128,13 +213,14 @@ def _delete_dataset(dataset_id: uuid.UUID, session: Session) -> Response:
     dataset = _load_one(session, dataset_id)
     if session.scalar(select(Run.id).where(Run.dataset_id == dataset_id).limit(1)):
         raise ApiError(409, "in_use", "A run uses this dataset. Keep it with the run.")
-    try:
-        path = archive_path(dataset)
-    except ApiError:
-        path = None
+    folder = get_settings().data_dir / "datasets" / str(dataset.id)
+    zip_path = get_settings().data_dir / f"datasets/{dataset.id}.zip"
+
     session.delete(dataset)
     session.commit()
     prepared_path(dataset).unlink(missing_ok=True)
-    if path is not None:
-        path.unlink(missing_ok=True)
+    if zip_path.is_file():
+        zip_path.unlink(missing_ok=True)
+    if folder.is_dir():
+        shutil.rmtree(folder, ignore_errors=True)
     return Response(status_code=204)

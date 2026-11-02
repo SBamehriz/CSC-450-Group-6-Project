@@ -354,4 +354,3 @@ def compute_run_bpb(
             pass
 
     return _bpb_eval_to_out(bpb_eval)
-

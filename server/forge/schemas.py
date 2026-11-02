@@ -67,7 +67,6 @@ class BucketOut(BaseModel):
     import_limit: int | None = None
 
 
-
 class DocumentOut(BaseModel):
     id: uuid.UUID
     bucket_id: uuid.UUID
@@ -617,5 +616,3 @@ class BpbEvaluationOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
-
-

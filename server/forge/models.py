@@ -353,9 +353,7 @@ class Evaluation(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        UtcDateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -397,9 +395,7 @@ class BpbEvaluation(Base):
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        UtcDateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -410,5 +406,3 @@ class BpbEvaluation(Base):
         Index("ix_bpb_evaluations_dataset_id", "dataset_id"),
         Index("ix_bpb_evaluations_status", "status"),
     )
-
-

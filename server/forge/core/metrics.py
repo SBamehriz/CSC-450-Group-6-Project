@@ -390,9 +390,7 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
         else:
             with Session(get_engine()) as session:
                 assert model_id is not None
-                model, tokenizer, model_record = load_native_model(
-                    session, model_id, checkpoint_id
-                )
+                model, tokenizer, model_record = load_native_model(session, model_id, checkpoint_id)
                 ctx_len = model_record.ctx_len
                 tokenizer_id_str = tokenizer.identity
 

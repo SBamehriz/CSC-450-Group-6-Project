@@ -105,11 +105,13 @@ def execute_eval_job(job_id: uuid.UUID) -> None:
 
             report(job_id, idx, total, f"Evaluating prompt {idx + 1}/{total}")
             output_text = _generate_for_prompt(model, prompt, max_new_tokens, temperature)
-            results.append({
-                "prompt": prompt,
-                "output": output_text,
-                "tokens_generated": len(output_text.split()),
-            })
+            results.append(
+                {
+                    "prompt": prompt,
+                    "output": output_text,
+                    "tokens_generated": len(output_text.split()),
+                }
+            )
 
         with Session(get_engine()) as session:
             job = session.get(Job, job_id)

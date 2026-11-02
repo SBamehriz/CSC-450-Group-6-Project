@@ -469,6 +469,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/models/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Model Configuration
+     * @description Import a Forge model configuration from a JSON request body.
+     *
+     *     Accepts a JSON file's contents (not PyTorch weights). The payload uses
+     *     the same fields as ModelCreate, with an optional top-level 'model' wrapper.
+     */
+    post: operations['import_model_configuration_api_models_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/models/{model_id}': {
     parameters: {
       query?: never;
@@ -2724,6 +2747,26 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  import_model_configuration_api_models_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelOut'];
         };
       };
     };

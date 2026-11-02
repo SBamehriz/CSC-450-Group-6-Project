@@ -1,6 +1,8 @@
+import json
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -271,6 +273,38 @@ def create_model(
     session.commit()
     session.refresh(model)
     return _model_to_out(model)
+
+
+@router.post("/models/import", response_model=ModelOut, status_code=201)
+async def import_model_configuration(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> ModelOut:
+    """Import a Forge model configuration from a JSON request body.
+
+    Accepts a JSON file's contents (not PyTorch weights). The payload uses
+    the same fields as ModelCreate, with an optional top-level 'model' wrapper.
+    """
+    raw = await request.body()
+    if len(raw) > 1_048_576:
+        raise ApiError(413, "import_too_large", "Model configuration exceeds 1 MiB.")
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeDecodeError) as err:
+        raise ApiError(400, "invalid_json", "Model import must contain valid JSON.") from err
+
+    if not isinstance(data, dict):
+        raise ApiError(422, "invalid_model", "Model import must be a JSON object.")
+    if "model" in data:
+        data = data["model"]
+    if not isinstance(data, dict):
+        raise ApiError(422, "invalid_model", "The 'model' field must be an object.")
+
+    try:
+        payload = ModelCreate.model_validate(data)
+    except ValidationError as err:
+        raise ApiError(422, "invalid_model", str(err)) from err
+    return create_model(payload, session)
 
 
 @router.get("/models/{model_id}", response_model=ModelOut)

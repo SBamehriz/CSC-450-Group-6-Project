@@ -469,6 +469,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/models/{model_id}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export Model
+     * @description Download a saved model configuration as a JSON file.
+     */
+    get: operations['export_model_api_models__model_id__export_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/models/{model_id}': {
     parameters: {
       query?: never;
@@ -2715,6 +2735,37 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['ModelOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_model_api_models__model_id__export_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        model_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
         };
       };
       /** @description Validation Error */

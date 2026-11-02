@@ -1,6 +1,8 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -271,6 +273,39 @@ def create_model(
     session.commit()
     session.refresh(model)
     return _model_to_out(model)
+
+
+@router.get("/models/{model_id}/export")
+def export_model(
+    model_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> Response:
+    """Download a saved model configuration as a JSON file."""
+    model = session.get(Model, model_id)
+
+    if not model:
+        raise ApiError(404, "not_found", "Model not found.")
+
+    export_data = {
+        "name": model.name,
+        "description": model.description,
+        "preset": model.preset,
+        "n_layer": model.n_layer,
+        "d_model": model.d_model,
+        "n_head": model.n_head,
+        "ctx_len": model.ctx_len,
+        "vocab_size": model.vocab_size,
+        "dropout": model.dropout,
+        "config": model.config,
+    }
+
+    content = json.dumps(export_data, indent=2)
+
+    return FastAPIResponse(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="model-{model_id}.json"'},
+    )
 
 
 @router.get("/models/{model_id}", response_model=ModelOut)

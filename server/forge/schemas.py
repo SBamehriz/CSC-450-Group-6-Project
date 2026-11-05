@@ -4,6 +4,9 @@ from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from forge.train.presets import MAX_D_MODEL, MAX_N_LAYER
+from forge.train.settings import TrainSettings
+
 T = TypeVar("T")
 
 
@@ -65,7 +68,6 @@ class BucketOut(BaseModel):
     dataset_split: str | None = None
     text_column: str | None = None
     import_limit: int | None = None
-
 
 
 class DocumentOut(BaseModel):
@@ -250,6 +252,7 @@ class GpuCard(BaseModel):
     index: int
     name: str
     memory_bytes: int
+    free_bytes: int
     driver: str
     compute_capability: str
 
@@ -273,6 +276,7 @@ class JobOut(BaseModel):
     error: str | None
     attempts: int = 0
     cancel_requested: bool = False
+    result: dict = Field(default_factory=dict)
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
@@ -406,8 +410,9 @@ class ModelCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     preset: str | None = None
     dataset_id: uuid.UUID | None = None
-    n_layer: int = Field(ge=1, le=12)
-    d_model: int = Field(ge=1, le=768)
+    tokenizer_id: uuid.UUID | None = None
+    n_layer: int = Field(ge=1, le=MAX_N_LAYER)
+    d_model: int = Field(ge=1, le=MAX_D_MODEL)
     n_head: int = Field(ge=1)
     ctx_len: int = Field(ge=128, le=2048)
     vocab_size: int = 16384
@@ -418,8 +423,9 @@ class ModelCreate(BaseModel):
 class ModelPreviewRequest(BaseModel):
     preset: str | None = None
     dataset_id: uuid.UUID | None = None
-    n_layer: int = Field(default=4, ge=1, le=12)
-    d_model: int = Field(default=128, ge=1, le=768)
+    tokenizer_id: uuid.UUID | None = None
+    n_layer: int = Field(default=4, ge=1, le=MAX_N_LAYER)
+    d_model: int = Field(default=128, ge=1, le=MAX_D_MODEL)
     n_head: int = Field(default=4, ge=1)
     ctx_len: int = Field(default=512)
     vocab_size: int | None = None
@@ -457,18 +463,33 @@ class ModelOut(BaseModel):
     dropout: float
     param_count: int
     config: dict
+    tokenizer_id: uuid.UUID | None = None
+    source: str = "forge"
     estimated_memory_bytes: int | None = None
     created_at: datetime
+
+
+class HubImportRequest(BaseModel):
+    repo_id: str = Field(min_length=3, max_length=200)
+    revision: str = Field(default="main", min_length=1, max_length=200)
+    name: str | None = Field(default=None, max_length=64)
+    # it does not fit the card, run it on the processor instead
+    on_cpu: bool = False
 
 
 class RunCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     model_id: uuid.UUID
     dataset_id: uuid.UUID | None = None
-    device: str = "cpu"
-    batch_size: int = Field(default=1, ge=1)
-    learning_rate: float = Field(default=0.001, gt=0.0)
-    max_steps: int = Field(default=1000, ge=1)
+    # the training set to train on; needed before the run can start
+    build_id: uuid.UUID | None = None
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+    seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    train_tokens: int | None = Field(default=None, ge=1)
+    settings: TrainSettings = Field(default_factory=TrainSettings)
+    batch_size: int | None = Field(default=None, ge=1)
+    learning_rate: float | None = Field(default=None, gt=0.0)
+    max_steps: int | None = Field(default=None, ge=1)
     hyperparams: dict = Field(default_factory=dict)
 
 
@@ -480,6 +501,13 @@ class RunOut(BaseModel):
     model_preset: str | None = None
     dataset_id: uuid.UUID | None
     dataset_name: str | None = None
+    build_id: uuid.UUID | None = None
+    build_name: str | None = None
+    seed: int = 0
+    tokens_seen: int = 0
+    settings: TrainSettings | None = None
+    job_id: uuid.UUID | None = None
+    job_status: str | None = None
     status: str
     device: str
     batch_size: int
@@ -511,6 +539,7 @@ class CheckpointOut(BaseModel):
     size_bytes: int
     is_best: bool
     metrics: dict
+    sha256: str | None = None
     created_at: datetime
 
 
@@ -619,3 +648,150 @@ class BpbEvaluationOut(BaseModel):
     created_at: datetime
 
 
+class ShapeIn(BaseModel):
+    n_layer: int = Field(ge=1, le=MAX_N_LAYER)
+    d_model: int = Field(ge=1, le=MAX_D_MODEL)
+    n_head: int = Field(ge=1)
+    ctx_len: int = Field(ge=64, le=2048)
+    vocab_size: int = Field(default=16384, ge=2, le=262_144)
+
+
+class SpeedTestCreate(BaseModel):
+    preset: str | None = None
+    shape: ShapeIn | None = None
+    sequences_per_step: int = Field(default=4, ge=1, le=256)
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+
+
+class SpeedTestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    preset: str | None
+    shape: dict
+    sequences_per_step: int
+    device: str
+    device_name: str
+    tokens_per_sec: float
+    peak_memory_bytes: int | None
+    steps: int
+    created_at: datetime
+
+
+class EstimateRequest(BaseModel):
+    preset: str | None = None
+    shape: ShapeIn | None = None
+    train_tokens: int = Field(ge=1)
+    sequences_per_step: int = Field(default=4, ge=1, le=256)
+
+
+class EstimateOut(BaseModel):
+    parameters: int
+    train_tokens: int
+    speed_source: Literal["measured", "scaled", "none"]
+    speed_test_id: uuid.UUID | None
+    device_name: str | None
+    tokens_per_sec: float | None
+    hours: float | None
+    memory_bytes: int
+    free_bytes: int | None
+    fits: bool | None
+    suggestion: str | None
+
+
+class BenchmarkInfo(BaseModel):
+    task: str
+    name: str
+    chance: float
+
+
+class BenchmarkRefusal(BaseModel):
+    task: str
+    name: str
+    reason: str
+
+
+class BenchmarkPlanOut(BaseModel):
+    parameters: int
+    allowed: list[BenchmarkInfo]
+    refused: list[BenchmarkRefusal]
+
+
+class BenchmarkCreate(BaseModel):
+    model_id: uuid.UUID
+    checkpoint_id: uuid.UUID | None = None
+    tasks: list[str] | None = None
+    limit: int | None = Field(default=None, ge=1, le=100_000)
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+
+
+class BenchmarkScore(BaseModel):
+    task: str
+    name: str
+    metric: str
+    score: float
+    low: float | None
+    high: float | None
+    chance: float
+    questions: int | None = None
+
+
+class BenchmarkResult(BaseModel):
+    job_id: uuid.UUID
+    finished_at: datetime | None
+    checkpoint_id: uuid.UUID | None
+    limit: int | None
+    harness_version: str | None
+    scores: list[BenchmarkScore]
+    refused: list[BenchmarkRefusal]
+
+
+class PromptCompareCreate(BaseModel):
+    model_ids: list[uuid.UUID] = Field(min_length=2, max_length=2)
+    prompts: list[str] = Field(default_factory=list, max_length=20)
+    prompt_set_id: uuid.UUID | None = None
+    temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    top_k: int = Field(default=40, ge=1, le=1000)
+    max_new_tokens: int = Field(default=64, ge=1, le=512)
+    seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+
+    @field_validator("prompts")
+    @classmethod
+    def _real_prompts(cls, prompts: list[str]) -> list[str]:
+        kept = [prompt for prompt in prompts if prompt.strip()]
+        if any(len(prompt) > 4000 for prompt in kept):
+            raise ValueError("Keep each prompt under 4,000 characters.")
+        return kept
+
+
+class PromptRow(BaseModel):
+    prompt: str
+    answers: list[str]
+
+
+class PromptCompareResult(BaseModel):
+    job_id: uuid.UUID
+    finished_at: datetime | None
+    settings: dict
+    model_names: list[str]
+    rows: list[PromptRow]
+
+
+class CompareModel(BaseModel):
+    id: uuid.UUID
+    name: str
+    source: str
+    parameters: int
+    vocab_size: int
+    ctx_len: int
+    license: str | None
+    tokens_seen: int | None
+    best_val_loss: float | None
+    bits_per_byte: float | None
+    benchmark: BenchmarkResult | None
+
+
+class CompareOut(BaseModel):
+    models: list[CompareModel]
+    prompt_runs: list[PromptCompareResult]

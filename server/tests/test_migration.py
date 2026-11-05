@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import MetaData, create_engine, inspect
 from sqlalchemy.orm import Session
 
 from alembic import command
@@ -175,48 +175,52 @@ def test_upgrade_from_0002_to_0003_preserves_existing_data(tmp_path: Path):
     ckpt_id = uuid.uuid4()
     now = datetime.now(UTC)
 
-    with Session(engine1) as s1:
-        model = Model(
-            id=model_id,
-            name="legacy-model",
-            description="Created in revision 0002",
-            preset="nano",
-            n_layer=4,
-            d_model=128,
-            n_head=4,
-            ctx_len=512,
-            vocab_size=16384,
-            dropout=0.0,
-            param_count=920000,
-            config={"rev": "0002"},
-            created_at=now,
+    old = MetaData()
+    old.reflect(engine1)
+    with engine1.begin() as conn:
+        conn.execute(
+            old.tables["models"].insert(),
+            {
+                "id": model_id.hex,
+                "name": "legacy-model",
+                "description": "Created in revision 0002",
+                "preset": "nano",
+                "n_layer": 4,
+                "d_model": 128,
+                "n_head": 4,
+                "ctx_len": 512,
+                "vocab_size": 16384,
+                "param_count": 920000,
+                "config": {"rev": "0002"},
+                "created_at": now,
+            },
         )
-        run = Run(
-            id=run_id,
-            name="legacy-run",
-            model_id=model_id,
-            status="completed",
-            loss=2.15,
-            eval_loss=2.10,
-            created_at=now,
+        conn.execute(
+            old.tables["runs"].insert(),
+            {
+                "id": run_id.hex,
+                "name": "legacy-run",
+                "model_id": model_id.hex,
+                "status": "completed",
+                "loss": 2.15,
+                "eval_loss": 2.10,
+                "created_at": now,
+            },
         )
-        ckpt = Checkpoint(
-            id=ckpt_id,
-            run_id=run_id,
-            step=100,
-            epoch=1,
-            loss=2.15,
-            val_loss=2.10,
-            uri="checkpoints/leg.pt",
-            is_best=True,
-            created_at=now,
+        conn.execute(
+            old.tables["checkpoints"].insert(),
+            {
+                "id": ckpt_id.hex,
+                "run_id": run_id.hex,
+                "step": 100,
+                "epoch": 1,
+                "loss": 2.15,
+                "val_loss": 2.10,
+                "uri": "checkpoints/leg.pt",
+                "is_best": True,
+                "created_at": now,
+            },
         )
-        s1.add(model)
-        s1.commit()
-        s1.add(run)
-        s1.commit()
-        s1.add(ckpt)
-        s1.commit()
     engine1.dispose()
 
     # 2. Upgrade from revision 0002 to head (revision 0003)
@@ -260,4 +264,3 @@ def test_upgrade_from_0002_to_0003_preserves_existing_data(tmp_path: Path):
         assert loaded_mp.speed == 13500.0
 
     engine2.dispose()
-

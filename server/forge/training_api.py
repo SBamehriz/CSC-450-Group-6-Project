@@ -41,6 +41,7 @@ def check_gpu() -> GpuCheck:
                 index=card.index,
                 name=card.name,
                 memory_bytes=card.memory_bytes,
+                free_bytes=card.free_bytes,
                 driver=card.driver,
                 compute_capability=card.compute_capability,
             )

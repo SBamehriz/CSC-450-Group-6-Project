@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { api, type GpuCheck, type Model, type ModelCreate, type Preset } from '../api/client';
+import { api, type Model, type ModelCreate, type Preset } from '../api/client';
+import HubImport from '../components/HubImport';
 import {
   Card,
   CardHead,
@@ -30,6 +31,9 @@ const PRESETS: Record<string, PresetConfig> = {
 };
 
 const STEPS = [1, 2, 4, 8, 16];
+// room for about a billion weights; whether it fits is this computer's call
+const MAX_BLOCKS = 48;
+const MAX_WIDTH = 2048;
 
 function calculateFormulaParams(
   n_layer: number,
@@ -112,11 +116,11 @@ export default function ModelsPage() {
         `Each head would get ${headDim} dimensions, but head dimensions must be integers.`
       );
     }
-    if (nLayer < 1 || nLayer > 24) {
-      return `Number of blocks (layers) must be between 1 and 24 (got ${nLayer}).`;
+    if (nLayer < 1 || nLayer > MAX_BLOCKS) {
+      return `Number of blocks (layers) must be between 1 and ${MAX_BLOCKS} (got ${nLayer}).`;
     }
-    if (dModel < 1 || dModel > 768) {
-      return `Model width (d_model) must be between 1 and 768 (got ${dModel}).`;
+    if (dModel < 1 || dModel > MAX_WIDTH) {
+      return `Model width (d_model) must be between 1 and ${MAX_WIDTH.toLocaleString()} (got ${dModel}).`;
     }
     if (![256, 512, 1024].includes(ctxLen)) {
       return `Context length must be 256, 512, or 1024 tokens (got ${ctxLen}).`;
@@ -198,7 +202,7 @@ export default function ModelsPage() {
       {explain ? (
         <div className="help-panel">
           <p>
-            <strong>Blocks (layers)</strong>: Number of transformer blocks. Valid range is 1 to 24.
+            <strong>Blocks (layers)</strong>: Number of transformer blocks. Valid range is 1 to 48.
           </p>
           <p>
             <strong>Width (d_model)</strong>: Hidden vector size. Must divide evenly by attention
@@ -215,32 +219,6 @@ export default function ModelsPage() {
           </p>
         </div>
       ) : null}
-
-      {/* GPU Details Card (Sprint 7) */}
-      <Card>
-        <CardHead
-          title="This computer's graphics card"
-          end={
-            <button
-              className="btn btn-sm"
-              type="button"
-              disabled={machine.isFetching}
-              onClick={() => void machine.refetch()}
-            >
-              Check again
-            </button>
-          }
-        />
-        <div className="card-body stack">
-          {machine.error ? (
-            <ErrorBox message={machine.error.message} onRetry={() => void machine.refetch()} />
-          ) : machine.isPending ? (
-            <p role="status">Checking for a graphics card…</p>
-          ) : (
-            <GpuDetails seen={machine.data} />
-          )}
-        </div>
-      </Card>
 
       {/* Preset Model Sizes Card (Sprint 7) */}
       <Card>
@@ -294,12 +272,24 @@ export default function ModelsPage() {
                       key={p.name}
                       preset={p}
                       sequences={sequences}
-                      cardBytes={card?.memory_bytes}
+                      cardBytes={card?.free_bytes}
                     />
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="card-body hint">
+              {card ? (
+                <>
+                  Fits is judged against the {gigabytes(card.free_bytes)} free right now on{' '}
+                  {card.name}, which has {gigabytes(card.memory_bytes)} in all. Other programs use
+                  some of it.{' '}
+                </>
+              ) : machine.isPending ? null : (
+                <>No graphics card was found, so sizes are not judged against one. </>
+              )}
+              <Link to="/gpu">See this computer</Link> for a speed test and real hours.
+            </p>
             <p className="card-body hint">
               Memory is an estimate for training every weight with a vocabulary of{' '}
               {presets.data[0]?.vocab_size.toLocaleString() ?? 0} word pieces. Fewer sequences per
@@ -383,7 +373,7 @@ export default function ModelsPage() {
                     type="number"
                     className="input"
                     min={1}
-                    max={24}
+                    max={MAX_BLOCKS}
                     value={nLayer}
                     onChange={(e) => setNLayer(Number(e.target.value))}
                     disabled={create.isPending}
@@ -395,7 +385,7 @@ export default function ModelsPage() {
                     type="number"
                     className="input"
                     min={1}
-                    max={768}
+                    max={MAX_WIDTH}
                     step={1}
                     value={dModel}
                     onChange={(e) => setDModel(Number(e.target.value))}
@@ -454,7 +444,7 @@ export default function ModelsPage() {
               <div>
                 <dt>Parameters</dt>
                 <dd>
-                  {preview ? preview.paramCount.toLocaleString() : '—'}
+                  {preview ? preview.paramCount.toLocaleString() : 'None'}
                   {preview ? (
                     <span className="muted" style={{ fontSize: '0.85em', marginLeft: 6 }}>
                       ({compactNumber(preview.paramCount)})
@@ -465,7 +455,7 @@ export default function ModelsPage() {
               <div>
                 <dt>Estimated training memory</dt>
                 <dd>
-                  {preview ? bytesToSize(preview.estimatedMemoryBytes) : '—'}
+                  {preview ? bytesToSize(preview.estimatedMemoryBytes) : 'None'}
                   <span className="badge" style={{ marginLeft: 6 }}>
                     Estimate
                   </span>
@@ -501,6 +491,8 @@ export default function ModelsPage() {
           </div>
         </Card>
       </div>
+
+      <HubImport />
 
       {/* Saved Models List Card (SP8.9) */}
       <Card>
@@ -554,8 +546,10 @@ export default function ModelsPage() {
                 </thead>
                 <tbody>
                   {visibleModels.map((m: Model) => {
-                    const vocabName =
-                      typeof m.config?.dataset_name === 'string'
+                    const hub = hubFacts(m);
+                    const vocabName = hub
+                      ? 'Its own'
+                      : typeof m.config?.dataset_name === 'string'
                         ? m.config.dataset_name
                         : 'Default vocab';
                     return (
@@ -567,9 +561,18 @@ export default function ModelsPage() {
                               {m.description}
                             </p>
                           ) : null}
+                          {hub ? (
+                            <p className="muted" style={{ margin: '2px 0 0', fontSize: '0.85em' }}>
+                              Licence {hub.license}, version {hub.commit}
+                            </p>
+                          ) : null}
                         </td>
                         <td>
-                          <Chip tone={m.preset ? 'ok' : 'idle'}>{m.preset ?? 'custom'}</Chip>
+                          {hub ? (
+                            <Chip tone="idle">Imported</Chip>
+                          ) : (
+                            <Chip tone={m.preset ? 'ok' : 'idle'}>{m.preset ?? 'custom'}</Chip>
+                          )}
                         </td>
                         <td>
                           <span title={`Vocab size: ${m.vocab_size.toLocaleString()}`}>
@@ -578,7 +581,9 @@ export default function ModelsPage() {
                         </td>
                         <td className="num">{compactNumber(m.param_count)}</td>
                         <td className="num">
-                          {m.estimated_memory_bytes ? bytesToSize(m.estimated_memory_bytes) : '—'}
+                          {m.estimated_memory_bytes
+                            ? bytesToSize(m.estimated_memory_bytes)
+                            : 'None'}
                         </td>
                         <td>
                           {m.n_layer}L · {m.d_model}W · {m.n_head}H · {m.ctx_len}C
@@ -608,6 +613,13 @@ export default function ModelsPage() {
       </Card>
     </>
   );
+}
+
+// where an imported model came from, with its pinned version cut short
+function hubFacts(model: Model): { license: string; commit: string } | null {
+  if (model.source !== 'hub') return null;
+  const hub = (model.config?.hub ?? {}) as { license?: string; commit?: string };
+  return { license: hub.license ?? 'unknown', commit: (hub.commit ?? 'unknown').slice(0, 7) };
 }
 
 function SizeRow({
@@ -640,71 +652,4 @@ function SizeRow({
       )}
     </tr>
   );
-}
-
-function GpuDetails({ seen }: { seen: GpuCheck }) {
-  return (
-    <>
-      {seen.cards.length === 0 ? (
-        <>
-          <p>
-            No NVIDIA graphics card was found. Training would run on the processor, which is much
-            slower.
-          </p>
-          {seen.tool_said ? (
-            <p className="muted">The card's driver said: {seen.tool_said}</p>
-          ) : null}
-        </>
-      ) : (
-        seen.cards.map((card) => (
-          <dl className="preview-counts" key={card.index}>
-            <div>
-              <dt>{seen.cards.length > 1 ? `Card ${card.index}` : 'Card'}</dt>
-              <dd>{card.name}</dd>
-            </div>
-            <div>
-              <dt>Memory</dt>
-              <dd>{gigabytes(card.memory_bytes)}</dd>
-            </div>
-            <div>
-              <dt>Driver</dt>
-              <dd>{card.driver}</dd>
-            </div>
-            <div>
-              <dt>Compute capability</dt>
-              <dd>{card.compute_capability ?? 'Unknown'}</dd>
-            </div>
-          </dl>
-        ))
-      )}
-      <TorchNote seen={seen} />
-    </>
-  );
-}
-
-function TorchNote({ seen }: { seen: GpuCheck }) {
-  if (seen.torch === 'missing') {
-    return (
-      <Notice tone="warn">
-        PyTorch isn't installed, so this computer can't train yet. Add the train extra from the
-        README.
-      </Notice>
-    );
-  }
-  if (seen.torch === 'cpu' && seen.cards.length > 0) {
-    return (
-      <Notice tone="warn">
-        PyTorch {seen.torch_version} is installed without graphics card support, so training would
-        use the processor. Reinstall PyTorch with CUDA from the README.
-      </Notice>
-    );
-  }
-  if (seen.torch === 'cuda') {
-    return (
-      <p className="muted">
-        PyTorch {seen.torch_version} with CUDA {seen.torch_cuda}
-      </p>
-    );
-  }
-  return seen.torch_version ? <p className="muted">PyTorch {seen.torch_version}</p> : null;
 }

@@ -169,7 +169,12 @@ def load_native_model(session: Session, model_id: uuid.UUID, checkpoint_id: uuid
     # Locate tokenizer if configured
     tokenizer_path = None
     tok_id = model_record.config.get("tokenizer_id")
-    if tok_id:
+    vocabulary = (
+        session.get(Tokenizer, model_record.tokenizer_id) if model_record.tokenizer_id else None
+    )
+    if vocabulary is not None and vocabulary.artifact_uri:
+        tokenizer_path = get_settings().data_dir / vocabulary.artifact_uri
+    elif tok_id:
         p = get_settings().data_dir / "tokenizers" / str(tok_id) / "tokenizer.json"
         if p.is_file():
             tokenizer_path = p
@@ -185,25 +190,34 @@ def load_native_model(session: Session, model_id: uuid.UUID, checkpoint_id: uuid
 
     tokenizer = NativeTokenizerAdapter(tokenizer_path, model_record.vocab_size)
 
-    gpt = None
-    try:
-        import torch
+    import torch
 
-        from forge.train.model import GPT
+    from forge.measuring import pick_checkpoint
+    from forge.train.model import GPT
 
-        gpt = GPT(cfg)
-        if checkpoint_id:
-            ckpt = session.get(Checkpoint, checkpoint_id)
-            if ckpt and ckpt.uri:
-                ckpt_path = get_settings().data_dir / ckpt.uri
-                if ckpt_path.is_file():
-                    state = torch.load(ckpt_path, map_location="cpu")
-                    gpt.load_state_dict(state.get("model", state), strict=False)
-        gpt.eval()
-    except Exception as problem:
-        log.warning("PyTorch model loading skipped/fallback: %s", problem)
-
+    # a model with no trained weights would only score noise, so refuse it
+    ckpt = session.get(Checkpoint, checkpoint_id) if checkpoint_id else None
+    ckpt = ckpt or pick_checkpoint(session, model_id)
+    if ckpt is None:
+        raise ValueError(
+            f"{model_record.name} has not been trained yet, so there is nothing to score."
+        )
+    ckpt_path = get_settings().data_dir / ckpt.uri
+    if not ckpt_path.is_file():
+        raise ValueError(f"The save point at step {ckpt.step:,} is missing from the disk.")
+    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    gpt = GPT(cfg)
+    gpt.load_state_dict(state.get("model", state), strict=True)
+    gpt.eval()
     return gpt, tokenizer, model_record
+
+
+def _is_ours(model: Any) -> bool:
+    try:
+        from forge.train.model import GPT
+    except ImportError:
+        return False
+    return isinstance(model, GPT)
 
 
 def score_text_with_native_model(
@@ -261,7 +275,7 @@ def score_text_with_native_model(
                 break
 
             chunk_tensor = torch.tensor([chunk], dtype=torch.long)
-            out = model(chunk_tensor)
+            out = model(chunk_tensor, chunk_tensor) if _is_ours(model) else model(chunk_tensor)
             if hasattr(out, "logits"):
                 logits = out.logits
             elif isinstance(out, tuple):
@@ -358,6 +372,7 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
             return
 
         model_source = bpb_eval.model_source
+        stored_name = bpb_eval.model_name
         model_id = bpb_eval.model_id
         checkpoint_id = bpb_eval.checkpoint_id
 
@@ -373,8 +388,7 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
 
     try:
         if model_source == "imported":
-            # Check for imported model interface (SP9.8)
-            imported_name = payload.get("imported_model_name", bpb_eval.model_name)
+            imported_name = payload.get("imported_model_name") or stored_name
             if not ImportedModelAdapter.is_available():
                 raise ApiError(
                     501,
@@ -382,7 +396,6 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
                     "Imported model evaluation depends on SP9.8 (transformers/imported model "
                     "interface), which is not yet available in this build.",
                 )
-            # When SP9.8 is available, load and score via ImportedModelAdapter
             model, hf_tok = ImportedModelAdapter.load(imported_name)
             tokenizer = ImportedTokenizerAdapter(hf_tok)
             ctx_len = int(payload.get("ctx_len", 512))
@@ -390,9 +403,7 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
         else:
             with Session(get_engine()) as session:
                 assert model_id is not None
-                model, tokenizer, model_record = load_native_model(
-                    session, model_id, checkpoint_id
-                )
+                model, tokenizer, model_record = load_native_model(session, model_id, checkpoint_id)
                 ctx_len = model_record.ctx_len
                 tokenizer_id_str = tokenizer.identity
 
@@ -424,6 +435,7 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
             )
 
         final_bpb = accumulator.bpb
+        report(job_id, total_docs, total_docs, f"BPB evaluation complete: {final_bpb:.4f}")
 
         with Session(get_engine()) as session:
             job = session.get(Job, job_id)
@@ -456,7 +468,6 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
                 job.status = "completed"
                 job.pid = None
                 job.completed_at = datetime.now(UTC)
-                report(job_id, total_docs, total_docs, f"BPB evaluation complete: {final_bpb:.4f}")
             session.commit()
 
     except Exception as problem:

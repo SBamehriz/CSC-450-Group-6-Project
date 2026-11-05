@@ -18,7 +18,8 @@ SUPPORTED = ("txt", "md", "html", "htm", "pdf", "docx", *IMAGE_EXTENSIONS, "json
 
 MIN_PDF_CHARS_PER_PAGE = 200
 MIN_HTML_CHARS = 200
-SHORT_DOC_CHARS = 500
+SHORT_DOC_CHARS = 150
+SHORT_DOC_WORDS = 25
 LOW_ALPHA_RATIO = 0.6
 LONG_LINE_CHARS = 2000
 BOILERPLATE_REPEATS = 5
@@ -595,7 +596,7 @@ def measure(text: str) -> dict:
 
 def flag(text: str, stats: dict, encoding_suspect: bool = False) -> list[str]:
     flags = []
-    if len(text) < SHORT_DOC_CHARS:
+    if len(text) < SHORT_DOC_CHARS or len(text.split()) < SHORT_DOC_WORDS:
         flags.append("too_short")
     if stats["alpha_ratio"] < LOW_ALPHA_RATIO:
         flags.append("low_alpha")

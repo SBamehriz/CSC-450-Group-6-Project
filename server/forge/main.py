@@ -10,11 +10,13 @@ from sqlalchemy.orm import Session
 
 from forge import (
     buckets,
+    compare_api,
     datasets,
     documents,
     eval_api,
     jobs,
     jobs_api,
+    measure_api,
     models_api,
     overview,
     prepared_api,
@@ -66,6 +68,8 @@ def create_app() -> FastAPI:
     api.include_router(runs_api.router)
     api.include_router(jobs_api.router)
     api.include_router(eval_api.router)
+    api.include_router(measure_api.router)
+    api.include_router(compare_api.router)
     app.include_router(api)
 
     _serve_interface(app)

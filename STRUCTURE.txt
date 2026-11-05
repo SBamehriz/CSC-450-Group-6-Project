@@ -20,7 +20,14 @@ server/
     Backend. The FastAPI app, the database models, and the ingestion pipeline.
 
 server/forge/train/
-    The GPT model and its size presets.
+    The GPT model, its size presets, the training loop (trainer.py, loop.py,
+    settings.py), the speed test (speed.py) and the Hugging Face export
+    (export.py).
+
+server/forge/
+    Besides the API routers: hub.py imports open models, harness.py runs
+    benchmarks, prompts.py asks two models the same prompts, measuring.py
+    loads any model for those two.
 
 server/alembic/
     Database migrations.

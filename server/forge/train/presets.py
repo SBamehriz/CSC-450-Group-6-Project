@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 
-MAX_N_LAYER = 24
-MAX_D_MODEL = 768
+MAX_N_LAYER = 48
+MAX_D_MODEL = 2048
 MAX_DROPOUT = 0.2
 MIN_CTX = 64
 MAX_CTX = 2048

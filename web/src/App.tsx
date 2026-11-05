@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import BucketDetailPage from './pages/BucketDetailPage';
 import BucketsPage from './pages/BucketsPage';
+import ComparePage from './pages/ComparePage';
+import ComputerPage from './pages/ComputerPage';
 import DatasetsPage from './pages/DatasetsPage';
 import EvaluationsPage from './pages/EvaluationsPage';
 import ModelsPage from './pages/ModelsPage';
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="/evaluations" element={<EvaluationsPage />} />
         <Route path="/history" element={<TrainingHistoryPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
+        <Route path="/compare" element={<ComparePage />} />
+        <Route path="/gpu" element={<ComputerPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

@@ -1,11 +1,3 @@
-"""Training metrics buffer and persistence.
-
-Records loss, validation loss, learning rate, and speed per training step.
-Measurements are buffered in memory and persisted in batches to avoid committing
-a separate database transaction on every step. Remaining measurements are flushed
-on completion, stop, or failure paths.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -29,7 +21,6 @@ __all__ = [
     "get_best_validation_loss",
     "get_metric_points",
 ]
-
 
 
 class MetricBuffer:

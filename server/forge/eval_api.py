@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from forge.config import get_settings
 from forge.core.metrics import ImportedModelAdapter, _get_validation_file_info
 from forge.db import get_session
 from forge.errors import ApiError
@@ -371,8 +372,14 @@ def create_bpb_evaluation(
     _, val_hash = _get_validation_file_info(dataset)
 
     model_source = payload.model_source
+    imported_name = payload.imported_model_name
+    picked = session.get(Model, payload.model_id) if payload.model_id else None
+    if picked is not None and picked.source == "hub" and picked.artifact_uri:
+        # a model imported from the hub is scored from its own folder
+        model_source = "imported"
+        imported_name = str(get_settings().data_dir / picked.artifact_uri)
     if model_source == "imported":
-        model_name = (payload.imported_model_name or "").strip()
+        model_name = (imported_name or "").strip()
         if not model_name:
             raise ApiError(400, "missing_model_name", "An imported model name must be provided.")
         if not ImportedModelAdapter.is_available():
@@ -382,7 +389,9 @@ def create_bpb_evaluation(
                 "Imported model evaluation depends on SP9.8 (transformers/imported model "
                 "interface), which is not yet installed in this environment.",
             )
-        model_id = None
+        model_id = picked.id if picked is not None else None
+        if picked is not None:
+            model_name = picked.name
         tok_identity = f"hf-tokenizer:{model_name}"
     else:
         if not payload.model_id:
@@ -437,7 +446,7 @@ def create_bpb_evaluation(
             "eval_type": "bpb",
             "bpb_eval_id": str(eval_id),
             "model_id": str(model_id) if model_id else None,
-            "imported_model_name": payload.imported_model_name,
+            "imported_model_name": imported_name,
             "model_source": model_source,
             "checkpoint_id": str(payload.checkpoint_id) if payload.checkpoint_id else None,
             "dataset_id": str(dataset.id),
@@ -493,4 +502,3 @@ def delete_bpb_evaluation(
     session.delete(evaluation)
     session.commit()
     return Response(status_code=204)
-

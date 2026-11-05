@@ -40,6 +40,11 @@ def engine(data_dir: Path):
 @pytest.fixture()
 def db(engine) -> Iterator[Session]:
     with engine.begin() as conn:
+        conn.execute(text("DELETE FROM evaluations"))
+        conn.execute(text("DELETE FROM bpb_evaluations"))
+        conn.execute(text("DELETE FROM prompt_sets"))
+        conn.execute(text("DELETE FROM metric_points"))
+        conn.execute(text("DELETE FROM speed_tests"))
         conn.execute(text("DELETE FROM checkpoints"))
         conn.execute(text("DELETE FROM runs"))
         conn.execute(text("DELETE FROM models"))

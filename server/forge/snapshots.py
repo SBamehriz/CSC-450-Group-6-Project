@@ -213,9 +213,9 @@ def write_snapshot_streaming(
                         "text": text,
                         "quality": doc.quality,
                     }
-                    line = (
-                        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-                    ).encode("utf-8")
+                    line = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode(
+                        "utf-8"
+                    )
                     train_out.write(line)
                     train_hasher.update(line)
                     total_chars += len(text)
@@ -271,9 +271,9 @@ def write_snapshot_streaming(
                         "text": text,
                         "quality": doc.quality,
                     }
-                    line = (
-                        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-                    ).encode("utf-8")
+                    line = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode(
+                        "utf-8"
+                    )
                     val_out.write(line)
                     val_hasher.update(line)
                     total_chars += len(text)

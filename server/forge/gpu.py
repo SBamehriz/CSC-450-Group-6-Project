@@ -125,3 +125,14 @@ def _torch(said: str | None) -> tuple[TorchBuild, str | None, str | None]:
 def read() -> Reading:
     cards, said = _cards()
     return Reading(cards, said, *_torch(_torch_said()))
+
+
+def free_gpu_memory() -> None:
+    """Release unused PyTorch GPU memory when available."""
+    try:
+        import torch
+    except ImportError:
+        return
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()

@@ -7,7 +7,8 @@ from typing import Literal
 
 TOOL: tuple[str, ...] = ("nvidia-smi",)
 FORMAT = "--format=csv,noheader,nounits"
-CARD_QUERY = "--query-gpu=index,uuid,name,memory.total,driver_version,compute_cap"
+# memory.free is read fresh on every check: other programs use the card too
+CARD_QUERY = "--query-gpu=index,uuid,name,memory.total,memory.free,driver_version,compute_cap"
 ASK_FOR_S = 5.0
 SMALLEST_MIB, BIGGEST_MIB = 512, 1 << 20
 
@@ -21,6 +22,7 @@ class Card:
     memory_bytes: int
     driver: str
     compute_capability: str
+    free_bytes: int
 
 
 @dataclass(frozen=True)
@@ -60,20 +62,23 @@ def _a_card(line: str) -> Card | None:
     if len(front) != 3:
         return None
     index, uuid, rest = front
-    parts = [part.strip() for part in rest.rsplit(",", 3)]
-    if _whole(index, 1 << 16) is None or not uuid.startswith("GPU-") or len(parts) != 4:
+    parts = [part.strip() for part in rest.rsplit(",", 4)]
+    if _whole(index, 1 << 16) is None or not uuid.startswith("GPU-") or len(parts) != 5:
         return None
-    name, mib, driver, capability = parts
+    name, mib, free_mib, driver, capability = parts
     total = _whole(mib, BIGGEST_MIB)
+    free = _whole(free_mib, BIGGEST_MIB)
     if (
         not name
         or total is None
+        or free is None
+        or free > total
         or total < SMALLEST_MIB
         or not re.fullmatch(r"[0-9]+(\.[0-9]+)*", driver)
         or not re.fullmatch(r"[0-9]+\.[0-9]+", capability)
     ):
         return None
-    return Card(int(index), name, total * 2**20, driver, capability)
+    return Card(int(index), name, total * 2**20, driver, capability, free * 2**20)
 
 
 def _cards() -> tuple[list[Card], str | None]:
@@ -120,3 +125,14 @@ def _torch(said: str | None) -> tuple[TorchBuild, str | None, str | None]:
 def read() -> Reading:
     cards, said = _cards()
     return Reading(cards, said, *_torch(_torch_said()))
+
+
+def free_gpu_memory() -> None:
+    """Release unused PyTorch GPU memory when available."""
+    try:
+        import torch
+    except ImportError:
+        return
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()

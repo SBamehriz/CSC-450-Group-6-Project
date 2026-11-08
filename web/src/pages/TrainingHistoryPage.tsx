@@ -14,6 +14,7 @@ import {
   Notice,
   type Tone,
 } from '../components/ui';
+import NewRunForm from '../components/NewRunForm';
 import { compactNumber, plural, relativeDate } from '../lib/format';
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -95,6 +96,8 @@ export default function TrainingHistoryPage() {
           </p>
         </div>
       ) : null}
+
+      <NewRunForm />
 
       <div className="collection-toolbar">
         <select

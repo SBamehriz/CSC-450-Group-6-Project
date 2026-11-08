@@ -119,7 +119,7 @@ def _busy(session: Session, target_id: uuid.UUID) -> bool:
         JobPayload.model_validate(job.payload).target_id == target_id
         for job in session.scalars(
             select(Job).where(
-                Job.job_type.in_(jobs.RUNNER_TYPES), Job.status.in_(("pending", "running"))
+                Job.job_type.in_(jobs.ARTIFACT_TYPES), Job.status.in_(("pending", "running"))
             )
         )
     )
@@ -128,7 +128,7 @@ def _busy(session: Session, target_id: uuid.UUID) -> bool:
 def _remove(session: Session, target: Tokenizer | DatasetBuild) -> Response:
     if _busy(session, target.id):
         raise ApiError(409, "busy", "Cancel its job and wait for it to stop first.")
-    for job in session.scalars(select(Job).where(Job.job_type.in_(jobs.RUNNER_TYPES))):
+    for job in session.scalars(select(Job).where(Job.job_type.in_(jobs.ARTIFACT_TYPES))):
         if JobPayload.model_validate(job.payload).target_id == target.id:
             session.delete(job)
     directory = jobs.artifact_directory(target)
@@ -341,6 +341,8 @@ def change_job(
     jobs.recover_jobs()
     session.execute(text("BEGIN IMMEDIATE"))
     job = _job(session, job_id)
+    if job.job_type in jobs.TASKS:
+        return _change_task(session, job, action)
     if job.job_type in ("dataset_import", "snapshot_create", "eval"):
         if action == "cancel":
             if job.status in ("pending", "running"):
@@ -427,4 +429,56 @@ def change_job(
     session.commit()
     if action == "retry":
         _start(session, job)
+    return JobOut.model_validate(job)
+
+
+def _change_task(session: Session, job: Job, action: str) -> JobOut:
+    if action == "cancel":
+        if job.status in ("pending", "running"):
+            job.cancel_requested = True
+            if job.status == "pending":
+                job.status = "cancelled"
+                job.error = "Canceled before it started."
+                job.completed_at = datetime.now(UTC)
+        session.commit()
+        if job.status == "cancelled":
+            finish = getattr(jobs._task_module(job.job_type), "finish", None)
+            if finish is not None:
+                finish(job.id, "cancelled", job.error)
+        return JobOut.model_validate(job)
+    if job.job_type == "train_run":
+        raise ApiError(
+            409, "not_retryable", "Use Resume on the run's page to carry on from its save point."
+        )
+    if job.status not in ("failed", "cancelled"):
+        raise ApiError(409, "not_retryable", "Only a failed or canceled job can be retried.")
+    job.status = "pending"
+    job.error = None
+    job.cancel_requested = False
+    job.started_at = job.completed_at = None
+    job.progress = JobProgress().model_dump()
+    job.result = {}
+    session.commit()
+    _start_task(session, job)
+    return JobOut.model_validate(job)
+
+
+def _start_task(session: Session, job: Job) -> None:
+    try:
+        jobs.start_runner()
+    except OSError as problem:
+        session.refresh(job)
+        if job.status != "pending":
+            return
+        message = f"The background process could not start: {problem}"
+        job.status, job.error = "failed", message
+        job.completed_at = datetime.now(UTC)
+        session.commit()
+        raise ApiError(503, "runner_unavailable", message) from problem
+
+
+def queue_task(session: Session, kind: str, payload: dict) -> JobOut:
+    """Queue one background task and wake the runner."""
+    job = jobs.enqueue_task(session, kind, payload)
+    _start_task(session, job)
     return JobOut.model_validate(job)

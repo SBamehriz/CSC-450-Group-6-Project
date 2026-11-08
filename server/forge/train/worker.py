@@ -1,4 +1,4 @@
-"""Training worker integrating MetricBuffer for step-by-step metric logging."""
+"""Training worker integrating MetricBuffer for step metrics."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.orm import Session
 
 from forge.db import open_session
+from forge.gpu import free_gpu_memory
 from forge.models import Run
 from forge.train.metrics import MetricBuffer
 
@@ -147,3 +148,16 @@ class TrainingWorker:
             finally:
                 session.close()
             raise
+
+
+_original_run_training_loop = TrainingWorker.run_training_loop
+
+
+def _run_training_loop_with_gpu_cleanup(self, *args, **kwargs):
+    try:
+        return _original_run_training_loop(self, *args, **kwargs)
+    finally:
+        free_gpu_memory()
+
+
+TrainingWorker.run_training_loop = _run_training_loop_with_gpu_cleanup

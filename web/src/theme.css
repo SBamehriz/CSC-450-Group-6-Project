@@ -48,6 +48,8 @@
   --gutter: 24px;
 
   --ease: 150ms ease-out;
+  --chart-1: #8c1d2c;
+  --chart-2: #1d4ed8;
 }
 
 .preparation-grid {
@@ -1385,4 +1387,82 @@ textarea.input {
   white-space: normal;
   overflow-wrap: anywhere;
   color: var(--bad);
+}
+
+/* run page: loss chart and numbers */
+.loss-chart {
+  margin: 0;
+}
+.loss-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart-grid {
+  stroke: var(--rule-soft);
+  stroke-width: 1;
+}
+.chart-tick {
+  fill: var(--ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+circle.chart-line {
+  stroke: none;
+}
+.chart-line-train {
+  stroke: var(--chart-1);
+}
+circle.chart-line-train {
+  fill: var(--chart-1);
+}
+.chart-line-val {
+  stroke: var(--chart-2);
+  stroke-dasharray: 6 3;
+}
+circle.chart-line-val {
+  fill: var(--chart-2);
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin-top: var(--s2);
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+.chart-legend i {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 2px solid;
+}
+.chart-line-train-key {
+  border-color: var(--chart-1);
+}
+.chart-line-val-key {
+  border-color: var(--chart-2);
+  border-top-style: dashed !important;
+}
+.run-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--s4);
+  margin: 0;
+}
+.run-numbers dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+.run-numbers dd {
+  margin: 2px 0 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }

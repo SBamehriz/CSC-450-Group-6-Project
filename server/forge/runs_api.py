@@ -1,14 +1,34 @@
+import io
+import json
 import uuid
+import zipfile
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
+from forge import jobs
+from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import BpbEvaluation, Checkpoint, Dataset, Job, Model, Run
+from forge.jobs_api import queue_task
+from forge.models import (
+    BpbEvaluation,
+    Checkpoint,
+    Dataset,
+    DatasetBuild,
+    Job,
+    MetricPoint,
+    Model,
+    Run,
+    Tokenizer,
+)
 from forge.schemas import (
     BpbEvaluationOut,
+    CheckpointOut,
+    JobOut,
     MetricPointOut,
     Page,
     RunCreate,
@@ -16,6 +36,7 @@ from forge.schemas import (
     RunOut,
 )
 from forge.train.metrics import get_best_validation_loss, get_metric_points
+from forge.train.settings import TrainSettings, steps_for_tokens
 
 router = APIRouter(tags=["runs"])
 
@@ -24,6 +45,9 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
     model = session.get(Model, run.model_id) if run.model_id else None
     dataset = session.get(Dataset, run.dataset_id) if run.dataset_id else None
     best_val = get_best_validation_loss(session, run.id)
+    build = session.get(DatasetBuild, run.build_id) if run.build_id else None
+    job = _run_job(session, run.id)
+    raw_settings = run.hyperparams.get("settings")
 
     # Resolve BPB if recorded in metrics or associated BpbEvaluation
     bpb_val: float | None = None
@@ -54,6 +78,13 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
             }
 
     return RunOut(
+        build_id=run.build_id,
+        build_name=build.name if build else None,
+        seed=run.seed,
+        tokens_seen=run.tokens_seen,
+        settings=TrainSettings.model_validate(raw_settings) if raw_settings else None,
+        job_id=job.id if job else None,
+        job_status=job.status if job else None,
         id=run.id,
         name=run.name,
         model_id=run.model_id,
@@ -115,32 +146,288 @@ def create_run(
     payload: RunCreate,
     session: Session = Depends(get_session),
 ) -> RunOut:
-    """Create a new training run record."""
+    """Create a training run: a model, a training set and its settings."""
     model = session.get(Model, payload.model_id)
     if not model:
         raise ApiError(404, "not_found", "Selected model was not found.")
+    if model.source != "forge":
+        raise ApiError(
+            409, "not_trainable", "Imported models are measured here, not trained from scratch."
+        )
 
-    if payload.dataset_id:
-        ds = session.get(Dataset, payload.dataset_id)
-        if not ds:
-            raise ApiError(404, "not_found", "Selected dataset was not found.")
+    dataset_id = payload.dataset_id
+    if dataset_id and not session.get(Dataset, dataset_id):
+        raise ApiError(404, "not_found", "Selected dataset was not found.")
+
+    settings = payload.settings.model_copy()
+    if payload.batch_size:
+        settings.batch_size = payload.batch_size
+    if payload.learning_rate:
+        settings.learning_rate = payload.learning_rate
+    if payload.max_steps:
+        settings.max_steps = payload.max_steps
+    TrainSettings.model_validate(settings.model_dump())
+
+    if payload.build_id:
+        build = _usable_build(session, payload.build_id)
+        _vocabulary_matches(session, model, build)
+        dataset_id = dataset_id or build.dataset_id
+        if payload.train_tokens:
+            settings.max_steps = steps_for_tokens(
+                payload.train_tokens, settings.batch_size, model.ctx_len
+            )
 
     run = Run(
         id=uuid.uuid4(),
         name=payload.name.strip(),
         model_id=payload.model_id,
-        dataset_id=payload.dataset_id,
+        dataset_id=dataset_id,
+        build_id=payload.build_id,
+        seed=payload.seed,
         device=payload.device,
-        batch_size=payload.batch_size,
-        learning_rate=payload.learning_rate,
-        max_steps=payload.max_steps,
+        batch_size=settings.batch_size,
+        learning_rate=settings.learning_rate,
+        max_steps=settings.max_steps,
         status="pending",
-        hyperparams=payload.hyperparams,
+        hyperparams={**payload.hyperparams, "settings": settings.model_dump()},
     )
     session.add(run)
     session.commit()
     session.refresh(run)
     return _run_to_out(run, session)
+
+
+def _usable_build(session: Session, build_id: uuid.UUID) -> DatasetBuild:
+    build = session.get(DatasetBuild, build_id)
+    if build is None:
+        raise ApiError(404, "not_found", "Selected training set was not found.")
+    if build.status != "ready":
+        raise ApiError(409, "build_not_ready", "This training set isn't ready yet.")
+    return build
+
+
+def _vocabulary_matches(session: Session, model: Model, build: DatasetBuild) -> None:
+    vocabulary = session.get(Tokenizer, build.tokenizer_id)
+    name = vocabulary.name if vocabulary else "another vocabulary"
+    if model.tokenizer_id is not None:
+        if model.tokenizer_id != build.tokenizer_id:
+            raise ApiError(
+                409,
+                "vocabulary_mismatch",
+                f"This training set was made with the vocabulary {name!r}, but the model "
+                "reads a different one. Choose a training set made with the model's vocabulary.",
+            )
+        return
+    if vocabulary is None or vocabulary.vocab_size != model.vocab_size:
+        raise ApiError(
+            409,
+            "vocabulary_mismatch",
+            f"The model reads {model.vocab_size:,} word pieces, but this training set uses "
+            f"{name!r}. Make a model with that vocabulary first.",
+        )
+
+
+def _run_job(session: Session, run_id: uuid.UUID) -> Job | None:
+    # the newest training job for this run
+    for job in session.scalars(
+        select(Job).where(Job.job_type == "train_run").order_by(Job.created_at.desc())
+    ):
+        if job.payload.get("run_id") == str(run_id):
+            return job
+    return None
+
+
+def _queue(session: Session, run: Run, resume: bool) -> Job:
+    job = jobs.enqueue_task(
+        session, "train_run", {"run_id": str(run.id), "resume": resume, "target_name": run.name}
+    )
+    run.status, run.error, run.completed_at = "pending", None, None
+    session.commit()
+    try:
+        jobs.start_runner()
+    except OSError as problem:
+        message = f"The background process could not start: {problem}"
+        job.status, run.status = "failed", "failed"
+        job.error = run.error = message
+        session.commit()
+        raise ApiError(503, "runner_unavailable", message) from problem
+    return job
+
+
+def _active(session: Session, run: Run) -> Job | None:
+    job = _run_job(session, run.id)
+    return job if job and job.status in ("pending", "running") else None
+
+
+@router.post("/runs/{run_id}/start", response_model=RunOut)
+def start_run(run_id: uuid.UUID, session: Session = Depends(get_session)) -> RunOut:
+    jobs.recover_jobs()
+    run = _load_run(session, run_id)
+    if _active(session, run):
+        raise ApiError(409, "already_running", "This run is already queued or training.")
+    if run.status == "completed" or session.scalar(
+        select(Checkpoint.id).where(Checkpoint.run_id == run.id)
+    ):
+        raise ApiError(409, "already_started", "This run already trained. Use Resume instead.")
+    # stopped before its first save point: start again from the beginning
+    session.execute(delete(MetricPoint).where(MetricPoint.run_id == run.id))
+    run.current_step, run.tokens_seen = 0, 0
+    if run.build_id is None:
+        raise ApiError(409, "no_training_set", "Choose a training set for this run first.")
+    model = session.get(Model, run.model_id)
+    assert model is not None
+    _vocabulary_matches(session, model, _usable_build(session, run.build_id))
+    _queue(session, run, resume=False)
+    return _run_to_out(run, session)
+
+
+@router.post("/runs/{run_id}/stop", response_model=RunOut)
+def stop_run(run_id: uuid.UUID, session: Session = Depends(get_session)) -> RunOut:
+    jobs.recover_jobs()
+    session.execute(text("BEGIN IMMEDIATE"))
+    run = _load_run(session, run_id)
+    job = _active(session, run)
+    if job is None:
+        raise ApiError(409, "not_running", "This run isn't training.")
+    job.cancel_requested = True
+    if job.status == "pending":
+        job.status, run.status = "cancelled", "stopped"
+        job.completed_at = run.completed_at = datetime.now(UTC)
+    session.commit()
+    return _run_to_out(run, session)
+
+
+@router.post("/runs/{run_id}/resume", response_model=RunOut)
+def resume_run(run_id: uuid.UUID, session: Session = Depends(get_session)) -> RunOut:
+    jobs.recover_jobs()
+    run = _load_run(session, run_id)
+    if _active(session, run):
+        raise ApiError(409, "already_running", "This run is already queued or training.")
+    if run.status == "completed":
+        raise ApiError(409, "finished", "This run already finished.")
+    if not session.scalar(select(Checkpoint.id).where(Checkpoint.run_id == run.id)):
+        raise ApiError(409, "no_save_point", "There is no save point yet. Start the run instead.")
+    _queue(session, run, resume=True)
+    return _run_to_out(run, session)
+
+
+def _checkpoint_out(row: Checkpoint) -> CheckpointOut:
+    return CheckpointOut(
+        id=row.id,
+        run_id=row.run_id,
+        step=row.step,
+        epoch=row.epoch,
+        loss=row.loss,
+        val_loss=row.val_loss,
+        uri=row.uri,
+        size_bytes=row.size_bytes,
+        is_best=row.is_best,
+        metrics=row.metrics,
+        sha256=row.sha256,
+        created_at=row.created_at,
+    )
+
+
+@router.get("/runs/{run_id}/checkpoints", response_model=list[CheckpointOut])
+def list_checkpoints(run_id: uuid.UUID, session: Session = Depends(get_session)):
+    _load_run(session, run_id)
+    rows = session.scalars(
+        select(Checkpoint).where(Checkpoint.run_id == run_id).order_by(Checkpoint.step.desc())
+    )
+    return [_checkpoint_out(row) for row in rows]
+
+
+@router.get("/checkpoints/{checkpoint_id}/download")
+def download_checkpoint(checkpoint_id: uuid.UUID, session: Session = Depends(get_session)):
+    """One zip: the weights, the model's shape and its vocabulary."""
+    checkpoint = session.get(Checkpoint, checkpoint_id)
+    if checkpoint is None:
+        raise ApiError(404, "not_found", "No save point with that id.")
+    run = session.get(Run, checkpoint.run_id)
+    model = session.get(Model, run.model_id) if run else None
+    path = get_settings().data_dir / checkpoint.uri
+    if not path.is_file():
+        raise ApiError(404, "missing_file", "This save point's file is missing from the disk.")
+    from forge.train.trainer import file_sha256
+
+    if checkpoint.sha256 and file_sha256(path) != checkpoint.sha256:
+        raise ApiError(
+            409, "changed_on_disk", "This save point changed on disk since it was saved."
+        )
+    vocabulary = None
+    build = session.get(DatasetBuild, run.build_id) if run and run.build_id else None
+    if build is not None:
+        vocabulary = session.get(Tokenizer, build.tokenizer_id)
+    shape = {
+        "format": "forge-gpt-v1",
+        "run": run.name if run else None,
+        "model": model.name if model else None,
+        "step": checkpoint.step,
+        "n_layer": model.n_layer if model else None,
+        "d_model": model.d_model if model else None,
+        "n_head": model.n_head if model else None,
+        "ctx_len": model.ctx_len if model else None,
+        "vocab_size": model.vocab_size if model else None,
+        "checkpoint_sha256": checkpoint.sha256,
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        archive.write(path, "save_point.pt")
+        archive.writestr("config.json", json.dumps(shape, indent=2))
+        if vocabulary and vocabulary.artifact_uri:
+            vocab_path = get_settings().data_dir / vocabulary.artifact_uri
+            if vocab_path.is_file():
+                archive.write(vocab_path, "tokenizer.json")
+    buffer.seek(0)
+    name = f"{(run.name if run else 'run').replace(' ', '-')}-step-{checkpoint.step}.zip"
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/checkpoints/{checkpoint_id}/export", response_model=JobOut, status_code=202)
+def export_checkpoint(checkpoint_id: uuid.UUID, session: Session = Depends(get_session)) -> JobOut:
+    """Turn a save point into a Hugging Face folder other tools load."""
+    checkpoint = session.get(Checkpoint, checkpoint_id)
+    if checkpoint is None:
+        raise ApiError(404, "not_found", "No save point with that id.")
+    run = session.get(Run, checkpoint.run_id)
+    return queue_task(
+        session,
+        "model_export",
+        {
+            "checkpoint_id": str(checkpoint_id),
+            "target_name": f"{run.name if run else 'Run'}, step {checkpoint.step:,}",
+        },
+    )
+
+
+@router.get("/checkpoints/{checkpoint_id}/export")
+def download_export(checkpoint_id: uuid.UUID, session: Session = Depends(get_session)):
+    if session.get(Checkpoint, checkpoint_id) is None:
+        raise ApiError(404, "not_found", "No save point with that id.")
+    folder = get_settings().data_dir / "exports" / str(checkpoint_id)
+    if not folder.is_dir():
+        raise ApiError(404, "not_exported", "This save point has not been exported yet.")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(folder.iterdir()):
+            archive.write(path, path.name)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="hf-{checkpoint_id}.zip"'},
+    )
+
+
+def _load_run(session: Session, run_id: uuid.UUID) -> Run:
+    run = session.get(Run, run_id)
+    if not run:
+        raise ApiError(404, "not_found", "Training run not found.")
+    return run
 
 
 @router.get("/runs/{run_id}", response_model=RunOut)
@@ -354,4 +641,3 @@ def compute_run_bpb(
             pass
 
     return _bpb_eval_to_out(bpb_eval)
-

@@ -65,6 +65,12 @@ JOB_TYPES = (
     "dataset_build",
     "dataset_import",
     "snapshot_create",
+    "train_run",
+    "speed_test",
+    "model_import",
+    "model_export",
+    "benchmark",
+    "prompt_compare",
 )
 ARTIFACT_STATUSES = ("pending", "building", "ready", "failed", "cancelled")
 RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
@@ -72,6 +78,7 @@ MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
 EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 BPB_EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 EVAL_RESULT_TYPES = ("prompt", "bpb", "benchmark")
+MODEL_SOURCES = ("forge", "hub")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:
@@ -163,6 +170,7 @@ class Job(Base):
     pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
@@ -190,9 +198,17 @@ class Model(Base):
     dropout: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     param_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    tokenizer_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("tokenizers.id", ondelete="SET NULL"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="forge")
+    artifact_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
-    __table_args__ = (Index("ix_models_preset", "preset"),)
+    __table_args__ = (
+        Index("ix_models_preset", "preset"),
+        CheckConstraint(_sql_in("source", MODEL_SOURCES), name="ck_models_source"),
+    )
 
 
 class Run(Base):
@@ -206,6 +222,11 @@ class Run(Base):
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True
     )
+    build_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("dataset_builds.id", ondelete="SET NULL"), nullable=True
+    )
+    seed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_seen: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     device: Mapped[str] = mapped_column(Text, nullable=False, default="cpu")
     batch_size: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -227,6 +248,7 @@ class Run(Base):
         Index("ix_runs_model_id", "model_id"),
         Index("ix_runs_dataset_id", "dataset_id"),
         Index("ix_runs_status", "status"),
+        Index("ix_runs_build_id", "build_id"),
     )
 
 
@@ -245,6 +267,7 @@ class Checkpoint(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     is_best: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     metrics: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -354,9 +377,7 @@ class Evaluation(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        UtcDateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -398,9 +419,7 @@ class BpbEvaluation(Base):
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     job_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        UtcDateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -411,6 +430,22 @@ class BpbEvaluation(Base):
         Index("ix_bpb_evaluations_dataset_id", "dataset_id"),
         Index("ix_bpb_evaluations_status", "status"),
     )
+
+
+class SpeedTest(Base):
+    # a short timed run on this computer, so estimates can use a real speed
+    __tablename__ = "speed_tests"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    preset: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shape: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    sequences_per_step: Mapped[int] = mapped_column(Integer, nullable=False)
+    device: Mapped[str] = mapped_column(Text, nullable=False)
+    device_name: Mapped[str] = mapped_column(Text, nullable=False)
+    tokens_per_sec: Mapped[float] = mapped_column(Float, nullable=False)
+    peak_memory_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    steps: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
 
 
 class EvalResult(Base):
@@ -425,19 +460,15 @@ class EvalResult(Base):
     checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("checkpoints.id", ondelete="RESTRICT"), nullable=True
     )
-    # The parent evaluation record that produced this result row.
     evaluation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Prompt results (result_type == "prompt")
     prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # BPB results (result_type == "bpb")
     bpb: Mapped[float | None] = mapped_column(Float, nullable=True)
     total_nll: Mapped[float | None] = mapped_column(Float, nullable=True)
     scored_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     scored_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # Benchmark results (result_type == "benchmark")
     benchmark_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     benchmark_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     benchmark_scores: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -450,5 +481,3 @@ class EvalResult(Base):
         Index("ix_eval_results_result_type", "result_type"),
         Index("ix_eval_results_created_at", "created_at"),
     )
-
-

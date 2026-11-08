@@ -533,6 +533,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/models/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import Model
+     * @description Check a hub model, then download it in the background.
+     */
+    post: operations['import_model_api_models_import_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/runs': {
     parameters: {
       query?: never;
@@ -548,9 +568,118 @@ export interface paths {
     put?: never;
     /**
      * Create Run
-     * @description Create a new training run record.
+     * @description Create a training run: a model, a training set and its settings.
      */
     post: operations['create_run_api_runs_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}/start': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start Run */
+    post: operations['start_run_api_runs__run_id__start_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}/stop': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Stop Run */
+    post: operations['stop_run_api_runs__run_id__stop_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}/resume': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume Run */
+    post: operations['resume_run_api_runs__run_id__resume_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/runs/{run_id}/checkpoints': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Checkpoints */
+    get: operations['list_checkpoints_api_runs__run_id__checkpoints_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/checkpoints/{checkpoint_id}/download': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download Checkpoint
+     * @description One zip: the weights, the model's shape and its vocabulary.
+     */
+    get: operations['download_checkpoint_api_checkpoints__checkpoint_id__download_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/checkpoints/{checkpoint_id}/export': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Download Export */
+    get: operations['download_export_api_checkpoints__checkpoint_id__export_get'];
+    put?: never;
+    /**
+     * Export Checkpoint
+     * @description Turn a save point into a Hugging Face folder other tools load.
+     */
+    post: operations['export_checkpoint_api_checkpoints__checkpoint_id__export_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -947,21 +1076,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/eval-results': {
+  '/api/speed-tests': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List Eval Results
-     * @description List saved evaluation results, newest first.
-     *
-     *     Pass ``result_type`` to filter by ``prompt``, ``bpb``, or ``benchmark``.
-     *     Pass ``model_id`` to filter by model.
-     */
-    get: operations['list_eval_results_api_eval_results_get'];
+    /** List Speed Tests */
+    get: operations['list_speed_tests_api_speed_tests_get'];
+    put?: never;
+    /** Start Speed Test */
+    post: operations['start_speed_test_api_speed_tests_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/estimate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Estimate */
+    post: operations['estimate_api_estimate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/benchmarks/plan': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Benchmark Plan */
+    get: operations['benchmark_plan_api_benchmarks_plan_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -970,25 +1128,52 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/eval-results/{result_id}': {
+  '/api/benchmarks': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * Get Eval Result
-     * @description Retrieve a single saved evaluation result by ID.
-     */
-    get: operations['get_eval_result_api_eval_results__result_id__get'];
+    get?: never;
+    put?: never;
+    /** Start Benchmark */
+    post: operations['start_benchmark_api_benchmarks_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/prompt-comparisons': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start Prompt Comparison */
+    post: operations['start_prompt_comparison_api_prompt_comparisons_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/compare': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Compare */
+    get: operations['compare_api_compare_get'];
     put?: never;
     post?: never;
-    /**
-     * Delete Eval Result
-     * @description Delete a saved evaluation result record.
-     */
-    delete: operations['delete_eval_result_api_eval_results__result_id__delete'];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -998,6 +1183,92 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** BenchmarkCreate */
+    BenchmarkCreate: {
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /** Checkpoint Id */
+      checkpoint_id?: string | null;
+      /** Tasks */
+      tasks?: string[] | null;
+      /** Limit */
+      limit?: number | null;
+      /**
+       * Device
+       * @default auto
+       * @enum {string}
+       */
+      device: 'auto' | 'cpu' | 'cuda';
+    };
+    /** BenchmarkInfo */
+    BenchmarkInfo: {
+      /** Task */
+      task: string;
+      /** Name */
+      name: string;
+      /** Chance */
+      chance: number;
+    };
+    /** BenchmarkPlanOut */
+    BenchmarkPlanOut: {
+      /** Parameters */
+      parameters: number;
+      /** Allowed */
+      allowed: components['schemas']['BenchmarkInfo'][];
+      /** Refused */
+      refused: components['schemas']['BenchmarkRefusal'][];
+    };
+    /** BenchmarkRefusal */
+    BenchmarkRefusal: {
+      /** Task */
+      task: string;
+      /** Name */
+      name: string;
+      /** Reason */
+      reason: string;
+    };
+    /** BenchmarkResult */
+    BenchmarkResult: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** Finished At */
+      finished_at: string | null;
+      /** Checkpoint Id */
+      checkpoint_id: string | null;
+      /** Limit */
+      limit: number | null;
+      /** Harness Version */
+      harness_version: string | null;
+      /** Scores */
+      scores: components['schemas']['BenchmarkScore'][];
+      /** Refused */
+      refused: components['schemas']['BenchmarkRefusal'][];
+    };
+    /** BenchmarkScore */
+    BenchmarkScore: {
+      /** Task */
+      task: string;
+      /** Name */
+      name: string;
+      /** Metric */
+      metric: string;
+      /** Score */
+      score: number;
+      /** Low */
+      low: number | null;
+      /** High */
+      high: number | null;
+      /** Chance */
+      chance: number;
+      /** Questions */
+      questions?: number | null;
+    };
     /** Body_upload_documents_api_buckets__bucket_id__documents_post */
     Body_upload_documents_api_buckets__bucket_id__documents_post: {
       /** Files */
@@ -1141,6 +1412,78 @@ export interface components {
       name?: string | null;
       /** Description */
       description?: string | null;
+    };
+    /** CheckpointOut */
+    CheckpointOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /** Step */
+      step: number;
+      /** Epoch */
+      epoch: number;
+      /** Loss */
+      loss: number | null;
+      /** Val Loss */
+      val_loss: number | null;
+      /** Uri */
+      uri: string;
+      /** Size Bytes */
+      size_bytes: number;
+      /** Is Best */
+      is_best: boolean;
+      /** Metrics */
+      metrics: {
+        [key: string]: unknown;
+      };
+      /** Sha256 */
+      sha256?: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
+    /** CompareModel */
+    CompareModel: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Source */
+      source: string;
+      /** Parameters */
+      parameters: number;
+      /** Vocab Size */
+      vocab_size: number;
+      /** Ctx Len */
+      ctx_len: number;
+      /** License */
+      license: string | null;
+      /** Tokens Seen */
+      tokens_seen: number | null;
+      /** Best Val Loss */
+      best_val_loss: number | null;
+      /** Bits Per Byte */
+      bits_per_byte: number | null;
+      benchmark: components['schemas']['BenchmarkResult'] | null;
+    };
+    /** CompareOut */
+    CompareOut: {
+      /** Models */
+      models: components['schemas']['CompareModel'][];
+      /** Prompt Runs */
+      prompt_runs: components['schemas']['PromptCompareResult'][];
     };
     /** DatasetBuildCreate */
     DatasetBuildCreate: {
@@ -1327,6 +1670,47 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** EstimateOut */
+    EstimateOut: {
+      /** Parameters */
+      parameters: number;
+      /** Train Tokens */
+      train_tokens: number;
+      /**
+       * Speed Source
+       * @enum {string}
+       */
+      speed_source: 'measured' | 'scaled' | 'none';
+      /** Speed Test Id */
+      speed_test_id: string | null;
+      /** Device Name */
+      device_name: string | null;
+      /** Tokens Per Sec */
+      tokens_per_sec: number | null;
+      /** Hours */
+      hours: number | null;
+      /** Memory Bytes */
+      memory_bytes: number;
+      /** Free Bytes */
+      free_bytes: number | null;
+      /** Fits */
+      fits: boolean | null;
+      /** Suggestion */
+      suggestion: string | null;
+    };
+    /** EstimateRequest */
+    EstimateRequest: {
+      /** Preset */
+      preset?: string | null;
+      shape?: components['schemas']['ShapeIn'] | null;
+      /** Train Tokens */
+      train_tokens: number;
+      /**
+       * Sequences Per Step
+       * @default 4
+       */
+      sequences_per_step: number;
+    };
     /** EvalResultOut */
     EvalResultOut: {
       /**
@@ -1334,8 +1718,11 @@ export interface components {
        * Format: uuid
        */
       id: string;
-      /** Result Type */
-      result_type: string;
+      /**
+       * Result Type
+       * @enum {string}
+       */
+      result_type: 'benchmark' | 'bpb' | 'prompt';
       /** Model Id */
       model_id: string | null;
       /** Model Name */
@@ -1343,33 +1730,45 @@ export interface components {
       /** Checkpoint Id */
       checkpoint_id: string | null;
       /** Evaluation Id */
-      evaluation_id: string | null;
+      evaluation_id?: string | null;
+      /** Dataset Id */
+      dataset_id?: string | null;
+      /** Prompt Set Id */
+      prompt_set_id?: string | null;
+      /** Benchmark Name */
+      benchmark_name: string | null;
+      /** Score */
+      score: number | null;
+      /** Benchmark Score */
+      benchmark_score?: number | null;
+      /** Benchmark Scores */
+      benchmark_scores?: {
+        [key: string]: unknown;
+      };
+      /** Bpb */
+      bpb: number | null;
+      /** Total Nll */
+      total_nll?: number | null;
+      /** Scored Bytes */
+      scored_bytes?: number | null;
+      /** Scored Tokens */
+      scored_tokens?: number | null;
+      /** Val Loss */
+      val_loss?: number | null;
+      /** Prompt */
+      prompt: string | null;
+      /** Answer */
+      answer: string | null;
       /** Settings */
       settings: {
         [key: string]: unknown;
       };
       /** Code Version */
       code_version: string | null;
-      /** Prompt */
-      prompt: string | null;
-      /** Answer */
-      answer: string | null;
-      /** Bpb */
-      bpb: number | null;
-      /** Total Nll */
-      total_nll: number | null;
-      /** Scored Bytes */
-      scored_bytes: number | null;
-      /** Scored Tokens */
-      scored_tokens: number | null;
-      /** Benchmark Name */
-      benchmark_name: string | null;
-      /** Benchmark Score */
-      benchmark_score: number | null;
-      /** Benchmark Scores */
-      benchmark_scores: {
-        [key: string]: unknown;
-      };
+      /** Source Evaluation Id */
+      source_evaluation_id?: string | null;
+      /** Source Bpb Evaluation Id */
+      source_bpb_evaluation_id?: string | null;
       /**
        * Created At
        * Format: date-time
@@ -1451,6 +1850,8 @@ export interface components {
       name: string;
       /** Memory Bytes */
       memory_bytes: number;
+      /** Free Bytes */
+      free_bytes: number;
       /** Driver */
       driver: string;
       /** Compute Capability */
@@ -1518,6 +1919,23 @@ export interface components {
       /** Num Examples */
       num_examples?: number | null;
     };
+    /** HubImportRequest */
+    HubImportRequest: {
+      /** Repo Id */
+      repo_id: string;
+      /**
+       * Revision
+       * @default main
+       */
+      revision: string;
+      /** Name */
+      name?: string | null;
+      /**
+       * On Cpu
+       * @default false
+       */
+      on_cpu: boolean;
+    };
     /** JobOut */
     JobOut: {
       /**
@@ -1549,6 +1967,10 @@ export interface components {
        * @default false
        */
       cancel_requested: boolean;
+      /** Result */
+      result?: {
+        [key: string]: unknown;
+      };
       /** Started At */
       started_at: string | null;
       /** Completed At */
@@ -1602,6 +2024,8 @@ export interface components {
       preset?: string | null;
       /** Dataset Id */
       dataset_id?: string | null;
+      /** Tokenizer Id */
+      tokenizer_id?: string | null;
       /** N Layer */
       n_layer: number;
       /** D Model */
@@ -1656,6 +2080,13 @@ export interface components {
       config: {
         [key: string]: unknown;
       };
+      /** Tokenizer Id */
+      tokenizer_id?: string | null;
+      /**
+       * Source
+       * @default forge
+       */
+      source: string;
       /** Estimated Memory Bytes */
       estimated_memory_bytes?: number | null;
       /**
@@ -1697,6 +2128,8 @@ export interface components {
       preset?: string | null;
       /** Dataset Id */
       dataset_id?: string | null;
+      /** Tokenizer Id */
+      tokenizer_id?: string | null;
       /**
        * N Layer
        * @default 4
@@ -1914,6 +2347,66 @@ export interface components {
       /** Memory */
       memory: components['schemas']['PresetMemory'][];
     };
+    /** PromptCompareCreate */
+    PromptCompareCreate: {
+      /** Model Ids */
+      model_ids: string[];
+      /** Prompts */
+      prompts?: string[];
+      /** Prompt Set Id */
+      prompt_set_id?: string | null;
+      /**
+       * Temperature
+       * @default 0.8
+       */
+      temperature: number;
+      /**
+       * Top K
+       * @default 40
+       */
+      top_k: number;
+      /**
+       * Max New Tokens
+       * @default 64
+       */
+      max_new_tokens: number;
+      /**
+       * Seed
+       * @default 0
+       */
+      seed: number;
+      /**
+       * Device
+       * @default auto
+       * @enum {string}
+       */
+      device: 'auto' | 'cpu' | 'cuda';
+    };
+    /** PromptCompareResult */
+    PromptCompareResult: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** Finished At */
+      finished_at: string | null;
+      /** Settings */
+      settings: {
+        [key: string]: unknown;
+      };
+      /** Model Names */
+      model_names: string[];
+      /** Rows */
+      rows: components['schemas']['PromptRow'][];
+    };
+    /** PromptRow */
+    PromptRow: {
+      /** Prompt */
+      prompt: string;
+      /** Answers */
+      answers: string[];
+    };
     /** PromptSetCreate */
     PromptSetCreate: {
       /** Name */
@@ -2020,26 +2513,28 @@ export interface components {
       model_id: string;
       /** Dataset Id */
       dataset_id?: string | null;
+      /** Build Id */
+      build_id?: string | null;
       /**
        * Device
-       * @default cpu
+       * @default auto
+       * @enum {string}
        */
-      device: string;
+      device: 'auto' | 'cpu' | 'cuda';
       /**
-       * Batch Size
-       * @default 1
+       * Seed
+       * @default 0
        */
-      batch_size: number;
-      /**
-       * Learning Rate
-       * @default 0.001
-       */
-      learning_rate: number;
-      /**
-       * Max Steps
-       * @default 1000
-       */
-      max_steps: number;
+      seed: number;
+      /** Train Tokens */
+      train_tokens?: number | null;
+      settings?: components['schemas']['TrainSettings'];
+      /** Batch Size */
+      batch_size?: number | null;
+      /** Learning Rate */
+      learning_rate?: number | null;
+      /** Max Steps */
+      max_steps?: number | null;
       /** Hyperparams */
       hyperparams?: {
         [key: string]: unknown;
@@ -2079,6 +2574,25 @@ export interface components {
       dataset_id: string | null;
       /** Dataset Name */
       dataset_name?: string | null;
+      /** Build Id */
+      build_id?: string | null;
+      /** Build Name */
+      build_name?: string | null;
+      /**
+       * Seed
+       * @default 0
+       */
+      seed: number;
+      /**
+       * Tokens Seen
+       * @default 0
+       */
+      tokens_seen: number;
+      settings?: components['schemas']['TrainSettings'] | null;
+      /** Job Id */
+      job_id?: string | null;
+      /** Job Status */
+      job_status?: string | null;
       /** Status */
       status: string;
       /** Device */
@@ -2125,6 +2639,22 @@ export interface components {
        */
       created_at: string;
     };
+    /** ShapeIn */
+    ShapeIn: {
+      /** N Layer */
+      n_layer: number;
+      /** D Model */
+      d_model: number;
+      /** N Head */
+      n_head: number;
+      /** Ctx Len */
+      ctx_len: number;
+      /**
+       * Vocab Size
+       * @default 16384
+       */
+      vocab_size: number;
+    };
     /** SnapshotCheck */
     SnapshotCheck: {
       /** Valid */
@@ -2141,6 +2671,54 @@ export interface components {
        * @default 0
        */
       validation_documents: number;
+    };
+    /** SpeedTestCreate */
+    SpeedTestCreate: {
+      /** Preset */
+      preset?: string | null;
+      shape?: components['schemas']['ShapeIn'] | null;
+      /**
+       * Sequences Per Step
+       * @default 4
+       */
+      sequences_per_step: number;
+      /**
+       * Device
+       * @default auto
+       * @enum {string}
+       */
+      device: 'auto' | 'cpu' | 'cuda';
+    };
+    /** SpeedTestOut */
+    SpeedTestOut: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Preset */
+      preset: string | null;
+      /** Shape */
+      shape: {
+        [key: string]: unknown;
+      };
+      /** Sequences Per Step */
+      sequences_per_step: number;
+      /** Device */
+      device: string;
+      /** Device Name */
+      device_name: string;
+      /** Tokens Per Sec */
+      tokens_per_sec: number;
+      /** Peak Memory Bytes */
+      peak_memory_bytes: number | null;
+      /** Steps */
+      steps: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** SplitStats */
     SplitStats: {
@@ -2219,6 +2797,59 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+    };
+    /** TrainSettings */
+    TrainSettings: {
+      /**
+       * Batch Size
+       * @default 16
+       */
+      batch_size: number;
+      /**
+       * Micro Batch Size
+       * @default 0
+       */
+      micro_batch_size: number;
+      /**
+       * Max Steps
+       * @default 1000
+       */
+      max_steps: number;
+      /**
+       * Learning Rate
+       * @default 0.0006
+       */
+      learning_rate: number;
+      /**
+       * Warmup Steps
+       * @default -1
+       */
+      warmup_steps: number;
+      /**
+       * Weight Decay
+       * @default 0.1
+       */
+      weight_decay: number;
+      /**
+       * Grad Clip
+       * @default 1
+       */
+      grad_clip: number;
+      /**
+       * Eval Every
+       * @default 100
+       */
+      eval_every: number;
+      /**
+       * Eval Tokens
+       * @default 100000
+       */
+      eval_tokens: number;
+      /**
+       * Save Every
+       * @default 200
+       */
+      save_every: number;
     };
     /**
      * UploadOutcome
@@ -3424,6 +4055,39 @@ export interface operations {
       };
     };
   };
+  import_model_api_models_import_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['HubImportRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_runs_api_runs_get: {
     parameters: {
       query?: {
@@ -3477,6 +4141,223 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_run_api_runs__run_id__start_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  stop_run_api_runs__run_id__stop_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  resume_run_api_runs__run_id__resume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_checkpoints_api_runs__run_id__checkpoints_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CheckpointOut'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  download_checkpoint_api_checkpoints__checkpoint_id__download_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        checkpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  download_export_api_checkpoints__checkpoint_id__export_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        checkpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  export_checkpoint_api_checkpoints__checkpoint_id__export_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        checkpoint_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
         };
       };
       /** @description Validation Error */
@@ -4429,11 +5310,96 @@ export interface operations {
       };
     };
   };
-  list_eval_results_api_eval_results_get: {
+  list_speed_tests_api_speed_tests_get: {
     parameters: {
-      query?: {
-        result_type?: string | null;
-        model_id?: string | null;
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SpeedTestOut'][];
+        };
+      };
+    };
+  };
+  start_speed_test_api_speed_tests_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SpeedTestCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  estimate_api_estimate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EstimateRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EstimateOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  benchmark_plan_api_benchmarks_plan_get: {
+    parameters: {
+      query: {
+        model_id: string;
       };
       header?: never;
       path?: never;
@@ -4447,7 +5413,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['EvalResultOut'][];
+          'application/json': components['schemas']['BenchmarkPlanOut'];
         };
       };
       /** @description Validation Error */
@@ -4461,13 +5427,79 @@ export interface operations {
       };
     };
   };
-  get_eval_result_api_eval_results__result_id__get: {
+  start_benchmark_api_benchmarks_post: {
     parameters: {
       query?: never;
       header?: never;
-      path: {
-        result_id: string;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BenchmarkCreate'];
       };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_prompt_comparison_api_prompt_comparisons_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PromptCompareCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  compare_api_compare_get: {
+    parameters: {
+      query: {
+        model_ids: string[];
+      };
+      header?: never;
+      path?: never;
       cookie?: never;
     };
     requestBody?: never;
@@ -4478,37 +5510,8 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['EvalResultOut'];
+          'application/json': components['schemas']['CompareOut'];
         };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  delete_eval_result_api_eval_results__result_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        result_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
       };
       /** @description Validation Error */
       422: {

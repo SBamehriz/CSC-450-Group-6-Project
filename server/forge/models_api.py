@@ -1,3 +1,4 @@
+import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -5,10 +6,24 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from forge import hub
+from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import BpbEvaluation, Checkpoint, Dataset, EvalResult, Evaluation, Model, Run
+from forge.jobs_api import queue_task
+from forge.models import (
+    BpbEvaluation,
+    Checkpoint,
+    Dataset,
+    EvalResult,
+    Evaluation,
+    Model,
+    Run,
+    Tokenizer,
+)
 from forge.schemas import (
+    HubImportRequest,
+    JobOut,
     ModelCreate,
     ModelOut,
     ModelPreviewOut,
@@ -35,6 +50,8 @@ router = APIRouter(tags=["models"])
 def _model_to_out(model: Model) -> ModelOut:
     mem: int | None = None
     try:
+        if model.source != "forge":
+            raise ValueError("not trained here")
         cfg = ModelConfig(
             n_layer=model.n_layer,
             d_model=model.d_model,
@@ -60,6 +77,8 @@ def _model_to_out(model: Model) -> ModelOut:
         dropout=model.dropout,
         param_count=model.param_count,
         config=model.config,
+        tokenizer_id=model.tokenizer_id,
+        source=model.source,
         estimated_memory_bytes=mem,
         created_at=model.created_at,
     )
@@ -120,7 +139,12 @@ def preview_model_shape(
 ) -> ModelPreviewOut:
     """Preview model parameter count and estimated memory before saving."""
     vocab_size = 16384
-    if payload.dataset_id:
+    if payload.tokenizer_id:
+        vocabulary = session.get(Tokenizer, payload.tokenizer_id)
+        if vocabulary is None or vocabulary.status != "ready" or not vocabulary.vocab_size:
+            return ModelPreviewOut(valid=False, error="Choose a ready vocabulary.")
+        vocab_size = vocabulary.vocab_size
+    elif payload.dataset_id:
         ds = session.get(Dataset, payload.dataset_id)
         if not ds:
             return ModelPreviewOut(
@@ -208,8 +232,18 @@ def create_model(
 
     vocab_size = payload.vocab_size
     config_data = dict(payload.config)
+    tokenizer_id = None
 
-    if payload.dataset_id:
+    if payload.tokenizer_id:
+        vocabulary = session.get(Tokenizer, payload.tokenizer_id)
+        if vocabulary is None or vocabulary.status != "ready" or not vocabulary.vocab_size:
+            raise ApiError(
+                400, "invalid_vocabulary", "Choose a ready vocabulary from the Vocabularies page."
+            )
+        vocab_size = vocabulary.vocab_size
+        tokenizer_id = vocabulary.id
+        config_data["vocabulary_name"] = vocabulary.name
+    elif payload.dataset_id:
         ds = session.get(Dataset, payload.dataset_id)
         if not ds:
             raise ApiError(
@@ -267,6 +301,7 @@ def create_model(
         dropout=payload.dropout,
         param_count=params,
         config=config_data,
+        tokenizer_id=tokenizer_id,
     )
     session.add(model)
     session.commit()
@@ -297,9 +332,7 @@ def delete_model(
         raise ApiError(404, "not_found", "Model not found.")
 
     ckpt_ids_subquery = (
-        select(Checkpoint.id)
-        .join(Run, Checkpoint.run_id == Run.id)
-        .where(Run.model_id == model_id)
+        select(Checkpoint.id).join(Run, Checkpoint.run_id == Run.id).where(Run.model_id == model_id)
     )
     saved_results_count = (
         session.scalar(
@@ -345,6 +378,7 @@ def delete_model(
         )
         raise ApiError(409, "model_in_use", msg)
 
+    folder = get_settings().data_dir / model.artifact_uri if model.artifact_uri else None
     try:
         session.delete(model)
         session.commit()
@@ -356,4 +390,24 @@ def delete_model(
             f"Cannot delete model '{model.name}' because it has saved evaluation results. "
             "Delete its saved results first.",
         ) from err
+    if folder is not None and folder.is_dir():
+        shutil.rmtree(folder, ignore_errors=True)
     return Response(status_code=204)
+
+
+@router.post("/models/import", response_model=JobOut, status_code=202)
+def import_model(payload: HubImportRequest, session: Session = Depends(get_session)) -> JobOut:
+    """Check a hub model, then download it in the background."""
+    try:
+        planned = hub.plan(payload.repo_id.strip(), payload.revision.strip(), payload.on_cpu)
+    except hub.Refused as problem:
+        raise ApiError(409, "import_refused", str(problem)) from problem
+    except ImportError as problem:
+        raise ApiError(
+            409, "hub_missing", "Importing needs the hub extra. Install it from the README first."
+        ) from problem
+    return queue_task(
+        session,
+        "model_import",
+        {"plan": planned, "name": payload.name, "target_name": planned["repo_id"]},
+    )

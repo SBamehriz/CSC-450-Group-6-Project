@@ -2,14 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import {
-  api,
-  type EvalResult,
-  type GpuCheck,
-  type Model,
-  type ModelCreate,
-  type Preset,
-} from '../api/client';
+import { api, type EvalResult, type Model, type ModelCreate, type Preset } from '../api/client';
+import HubImport from '../components/HubImport';
 import {
   Card,
   CardHead,
@@ -37,14 +31,9 @@ const PRESETS: Record<string, PresetConfig> = {
 };
 
 const STEPS = [1, 2, 4, 8, 16];
-
-function formatSettings(settings: Record<string, unknown> | undefined): string {
-  if (!settings || Object.keys(settings).length === 0) return 'Default settings';
-  return Object.entries(settings)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => `${k}: ${String(v)}`)
-    .join(' · ');
-}
+// room for about a billion weights; whether it fits is this computer's call
+const MAX_BLOCKS = 48;
+const MAX_WIDTH = 2048;
 
 function calculateFormulaParams(
   n_layer: number,
@@ -100,17 +89,40 @@ export default function ModelsPage() {
   const [ctxLen, setCtxLen] = useState(512);
   const [search, setSearch] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [resultDeleteError, setResultDeleteError] = useState<string | null>(null);
-  const [selectedHistoryModelId, setSelectedHistoryModelId] = useState<string>('');
-  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>('all');
+  const [selectedHistoryModelId, setSelectedHistoryModelId] = useState('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<
+    'all' | 'prompt' | 'bpb' | 'benchmark'
+  >('all');
+  const [expandedResultIds, setExpandedResultIds] = useState<Record<string, boolean>>({});
+  const [deleteResultError, setDeleteResultError] = useState<string | null>(null);
 
   const evalResults = useQuery({
-    queryKey: ['evalResults', selectedHistoryModelId],
+    queryKey: ['evalResults', { model_id: selectedHistoryModelId || undefined }],
     queryFn: () =>
-      api.listEvalResults
-        ? api.listEvalResults({ model_id: selectedHistoryModelId || undefined })
-        : Promise.resolve([]),
+      typeof api.listEvalResults === 'function'
+        ? api
+            .listEvalResults({ model_id: selectedHistoryModelId || undefined })
+            .catch(() => [] as EvalResult[])
+        : Promise.resolve([] as EvalResult[]),
   });
+
+  const removeResult = useMutation({
+    mutationFn: (id: string) => api.deleteEvalResult(id),
+    onSuccess: () => {
+      setDeleteResultError(null);
+      setDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
+      void queryClient.invalidateQueries({ queryKey: ['evaluations'] });
+      void queryClient.invalidateQueries({ queryKey: ['bpbEvaluations'] });
+    },
+    onError: (err: Error) => {
+      setDeleteResultError(err.message);
+    },
+  });
+
+  const toggleResultExpand = (id: string) => {
+    setExpandedResultIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Selected vocabulary details
   const vocabs = vocabularies.data ?? [];
@@ -138,11 +150,11 @@ export default function ModelsPage() {
         `Each head would get ${headDim} dimensions, but head dimensions must be integers.`
       );
     }
-    if (nLayer < 1 || nLayer > 24) {
-      return `Number of blocks (layers) must be between 1 and 24 (got ${nLayer}).`;
+    if (nLayer < 1 || nLayer > MAX_BLOCKS) {
+      return `Number of blocks (layers) must be between 1 and ${MAX_BLOCKS} (got ${nLayer}).`;
     }
-    if (dModel < 1 || dModel > 768) {
-      return `Model width (d_model) must be between 1 and 768 (got ${dModel}).`;
+    if (dModel < 1 || dModel > MAX_WIDTH) {
+      return `Model width (d_model) must be between 1 and ${MAX_WIDTH.toLocaleString()} (got ${dModel}).`;
     }
     if (![256, 512, 1024].includes(ctxLen)) {
       return `Context length must be 256, 512, or 1024 tokens (got ${ctxLen}).`;
@@ -192,31 +204,12 @@ export default function ModelsPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteModel(id),
-    onSuccess: (_data, deletedModelId) => {
+    onSuccess: () => {
       setDeleteError(null);
-      if (selectedHistoryModelId === deletedModelId) {
-        setSelectedHistoryModelId('');
-      }
       void queryClient.invalidateQueries({ queryKey: ['models'] });
-      void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
     },
     onError: (err: Error) => {
       setDeleteError(err.message);
-    },
-  });
-
-  const deleteResult = useMutation({
-    mutationFn: (id: string) => api.deleteEvalResult(id),
-    onSuccess: () => {
-      setDeleteError(null);
-      setResultDeleteError(null);
-      void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
-      void queryClient.invalidateQueries({ queryKey: ['evaluations'] });
-      void queryClient.invalidateQueries({ queryKey: ['bpbEvaluations'] });
-      void queryClient.invalidateQueries({ queryKey: ['models'] });
-    },
-    onError: (err: Error) => {
-      setResultDeleteError(err.message);
     },
   });
 
@@ -226,16 +219,6 @@ export default function ModelsPage() {
       .toLowerCase()
       .includes(search.trim().toLowerCase()),
   );
-
-  const allEvalResults = useMemo(() => evalResults.data ?? [], [evalResults.data]);
-  const visibleEvalResults = useMemo(() => {
-    return allEvalResults.filter((r: EvalResult) => {
-      if (historyTypeFilter !== 'all' && r.result_type !== historyTypeFilter) return false;
-      return true;
-    });
-  }, [allEvalResults, historyTypeFilter]);
-
-  const selectedHistoryModel = savedModels.find((m: Model) => m.id === selectedHistoryModelId);
 
   return (
     <>
@@ -253,7 +236,7 @@ export default function ModelsPage() {
       {explain ? (
         <div className="help-panel">
           <p>
-            <strong>Blocks (layers)</strong>: Number of transformer blocks. Valid range is 1 to 24.
+            <strong>Blocks (layers)</strong>: Number of transformer blocks. Valid range is 1 to 48.
           </p>
           <p>
             <strong>Width (d_model)</strong>: Hidden vector size. Must divide evenly by attention
@@ -270,32 +253,6 @@ export default function ModelsPage() {
           </p>
         </div>
       ) : null}
-
-      {/* GPU Details Card (Sprint 7) */}
-      <Card>
-        <CardHead
-          title="This computer's graphics card"
-          end={
-            <button
-              className="btn btn-sm"
-              type="button"
-              disabled={machine.isFetching}
-              onClick={() => void machine.refetch()}
-            >
-              Check again
-            </button>
-          }
-        />
-        <div className="card-body stack">
-          {machine.error ? (
-            <ErrorBox message={machine.error.message} onRetry={() => void machine.refetch()} />
-          ) : machine.isPending ? (
-            <p role="status">Checking for a graphics card…</p>
-          ) : (
-            <GpuDetails seen={machine.data} />
-          )}
-        </div>
-      </Card>
 
       {/* Preset Model Sizes Card (Sprint 7) */}
       <Card>
@@ -349,12 +306,24 @@ export default function ModelsPage() {
                       key={p.name}
                       preset={p}
                       sequences={sequences}
-                      cardBytes={card?.memory_bytes}
+                      cardBytes={card?.free_bytes}
                     />
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="card-body hint">
+              {card ? (
+                <>
+                  Fits is judged against the {gigabytes(card.free_bytes)} free right now on{' '}
+                  {card.name}, which has {gigabytes(card.memory_bytes)} in all. Other programs use
+                  some of it.{' '}
+                </>
+              ) : machine.isPending ? null : (
+                <>No graphics card was found, so sizes are not judged against one. </>
+              )}
+              <Link to="/gpu">See this computer</Link> for a speed test and real hours.
+            </p>
             <p className="card-body hint">
               Memory is an estimate for training every weight with a vocabulary of{' '}
               {presets.data[0]?.vocab_size.toLocaleString() ?? 0} word pieces. Fewer sequences per
@@ -438,7 +407,7 @@ export default function ModelsPage() {
                     type="number"
                     className="input"
                     min={1}
-                    max={24}
+                    max={MAX_BLOCKS}
                     value={nLayer}
                     onChange={(e) => setNLayer(Number(e.target.value))}
                     disabled={create.isPending}
@@ -450,7 +419,7 @@ export default function ModelsPage() {
                     type="number"
                     className="input"
                     min={1}
-                    max={768}
+                    max={MAX_WIDTH}
                     step={1}
                     value={dModel}
                     onChange={(e) => setDModel(Number(e.target.value))}
@@ -509,7 +478,7 @@ export default function ModelsPage() {
               <div>
                 <dt>Parameters</dt>
                 <dd>
-                  {preview ? preview.paramCount.toLocaleString() : '—'}
+                  {preview ? preview.paramCount.toLocaleString() : 'None'}
                   {preview ? (
                     <span className="muted" style={{ fontSize: '0.85em', marginLeft: 6 }}>
                       ({compactNumber(preview.paramCount)})
@@ -520,7 +489,7 @@ export default function ModelsPage() {
               <div>
                 <dt>Estimated training memory</dt>
                 <dd>
-                  {preview ? bytesToSize(preview.estimatedMemoryBytes) : '—'}
+                  {preview ? bytesToSize(preview.estimatedMemoryBytes) : 'None'}
                   <span className="badge" style={{ marginLeft: 6 }}>
                     Estimate
                   </span>
@@ -556,6 +525,8 @@ export default function ModelsPage() {
           </div>
         </Card>
       </div>
+
+      <HubImport />
 
       {/* Saved Models List Card (SP8.9) */}
       <Card>
@@ -609,8 +580,10 @@ export default function ModelsPage() {
                 </thead>
                 <tbody>
                   {visibleModels.map((m: Model) => {
-                    const vocabName =
-                      typeof m.config?.dataset_name === 'string'
+                    const hub = hubFacts(m);
+                    const vocabName = hub
+                      ? 'Its own'
+                      : typeof m.config?.dataset_name === 'string'
                         ? m.config.dataset_name
                         : 'Default vocab';
                     return (
@@ -622,9 +595,18 @@ export default function ModelsPage() {
                               {m.description}
                             </p>
                           ) : null}
+                          {hub ? (
+                            <p className="muted" style={{ margin: '2px 0 0', fontSize: '0.85em' }}>
+                              Licence {hub.license}, version {hub.commit}
+                            </p>
+                          ) : null}
                         </td>
                         <td>
-                          <Chip tone={m.preset ? 'ok' : 'idle'}>{m.preset ?? 'custom'}</Chip>
+                          {hub ? (
+                            <Chip tone="idle">Imported</Chip>
+                          ) : (
+                            <Chip tone={m.preset ? 'ok' : 'idle'}>{m.preset ?? 'custom'}</Chip>
+                          )}
                         </td>
                         <td>
                           <span title={`Vocab size: ${m.vocab_size.toLocaleString()}`}>
@@ -633,7 +615,9 @@ export default function ModelsPage() {
                         </td>
                         <td className="num">{compactNumber(m.param_count)}</td>
                         <td className="num">
-                          {m.estimated_memory_bytes ? bytesToSize(m.estimated_memory_bytes) : '—'}
+                          {m.estimated_memory_bytes
+                            ? bytesToSize(m.estimated_memory_bytes)
+                            : 'None'}
                         </td>
                         <td>
                           {m.n_layer}L · {m.d_model}W · {m.n_head}H · {m.ctx_len}C
@@ -641,24 +625,15 @@ export default function ModelsPage() {
                         <td>{relativeDate(m.created_at)}</td>
                         <td>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <Link className="btn btn-sm" to={`/evaluations?model=${m.id}`}>
-                              Evaluate
-                            </Link>
                             <button
                               type="button"
-                              className={`btn btn-sm ${selectedHistoryModelId === m.id ? 'btn-primary' : ''}`}
-                              onClick={() => {
-                                setSelectedHistoryModelId(
-                                  selectedHistoryModelId === m.id ? '' : m.id,
-                                );
-                                const el = document.getElementById('model-evaluation-history');
-                                if (el) el.scrollIntoView({ behavior: 'smooth' });
-                              }}
+                              className="btn btn-sm"
+                              onClick={() => setSelectedHistoryModelId(m.id)}
                             >
-                              Results
+                              History
                             </button>
-                            <Link className="btn btn-sm" to={`/compare?model=${m.id}`}>
-                              Compare
+                            <Link className="btn btn-sm" to={`/evaluations?model=${m.id}`}>
+                              Evaluate
                             </Link>
                             <ConfirmButton
                               label="Delete"
@@ -679,353 +654,273 @@ export default function ModelsPage() {
       </Card>
 
       {/* Model Evaluation History Card */}
-      <div id="model-evaluation-history" style={{ marginTop: 24 }}>
-        <Card>
-          <CardHead
-            title={
-              selectedHistoryModel
-                ? `Evaluation history · ${selectedHistoryModel.name}`
-                : 'Model evaluation history'
-            }
-            end={
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                {savedModels.length > 0 ? (
-                  <label
-                    className="field"
-                    style={{
-                      margin: 0,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <span className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
-                      Model:
-                    </span>
-                    <select
-                      className="input input-sm"
-                      value={selectedHistoryModelId}
-                      onChange={(e) => setSelectedHistoryModelId(e.target.value)}
-                    >
-                      <option value="">All models</option>
-                      {savedModels.map((m: Model) => (
-                        <option key={m.id} value={m.id}>
-                          Model: {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                <Link
-                  className="btn btn-sm"
-                  to={
-                    selectedHistoryModelId ? `/compare?model=${selectedHistoryModelId}` : '/compare'
-                  }
-                >
-                  Compare results →
-                </Link>
-              </div>
-            }
-          />
-          <div className="card-body stack">
-            {/* Filter Bar */}
-            <div className="seg" role="tablist" aria-label="Evaluation result type">
-              <button
-                type="button"
-                className={historyTypeFilter === 'all' ? 'on' : undefined}
-                aria-pressed={historyTypeFilter === 'all'}
-                onClick={() => setHistoryTypeFilter('all')}
+      <Card>
+        <CardHead
+          title="Model evaluation history"
+          end={
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                className="input input-sm"
+                aria-label="Filter history by model"
+                value={selectedHistoryModelId}
+                onChange={(e) => setSelectedHistoryModelId(e.target.value)}
+                style={{ minWidth: 180 }}
               >
-                All results ({allEvalResults.length})
-              </button>
-              <button
-                type="button"
-                className={historyTypeFilter === 'prompt' ? 'on' : undefined}
-                aria-pressed={historyTypeFilter === 'prompt'}
-                onClick={() => setHistoryTypeFilter('prompt')}
+                <option value="">All models</option>
+                {savedModels.map((m: Model) => (
+                  <option key={m.id} value={m.id}>
+                    Model: {m.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="input input-sm"
+                aria-label="Filter history by result type"
+                value={historyTypeFilter}
+                onChange={(e) =>
+                  setHistoryTypeFilter(e.target.value as 'all' | 'prompt' | 'bpb' | 'benchmark')
+                }
+                style={{ minWidth: 150 }}
               >
-                Prompts ({allEvalResults.filter((r) => r.result_type === 'prompt').length})
-              </button>
-              <button
-                type="button"
-                className={historyTypeFilter === 'bpb' ? 'on' : undefined}
-                aria-pressed={historyTypeFilter === 'bpb'}
-                onClick={() => setHistoryTypeFilter('bpb')}
+                <option value="all">All result types</option>
+                <option value="prompt">Prompt answers</option>
+                <option value="bpb">Bits per byte (BPB)</option>
+                <option value="benchmark">Benchmarks</option>
+              </select>
+              <Link
+                className="btn btn-sm"
+                to={
+                  selectedHistoryModelId ? `/compare?model=${selectedHistoryModelId}` : '/compare'
+                }
               >
-                Bits per byte ({allEvalResults.filter((r) => r.result_type === 'bpb').length})
-              </button>
-              <button
-                type="button"
-                className={historyTypeFilter === 'benchmark' ? 'on' : undefined}
-                aria-pressed={historyTypeFilter === 'benchmark'}
-                onClick={() => setHistoryTypeFilter('benchmark')}
-              >
-                Benchmarks ({allEvalResults.filter((r) => r.result_type === 'benchmark').length})
-              </button>
+                Open Compare
+              </Link>
             </div>
+          }
+        />
+        <div className="card-body stack">
+          {deleteResultError ? <Notice tone="bad">{deleteResultError}</Notice> : null}
+          {evalResults.error ? (
+            <ErrorBox
+              message={evalResults.error.message}
+              onRetry={() => void evalResults.refetch()}
+            />
+          ) : evalResults.isPending ? (
+            <p role="status">Loading saved evaluation results…</p>
+          ) : (
+            (() => {
+              const allItems: EvalResult[] = evalResults.data ?? [];
+              const filtered =
+                historyTypeFilter === 'all'
+                  ? allItems
+                  : allItems.filter((r) => r.result_type === historyTypeFilter);
 
-            {/* Content States */}
-            {resultDeleteError ? <Notice tone="bad">{resultDeleteError}</Notice> : null}
-            {evalResults.error ? (
-              <ErrorBox
-                message={evalResults.error.message}
-                onRetry={() => void evalResults.refetch()}
-              />
-            ) : evalResults.isPending ? (
-              <p role="status">Loading evaluation history…</p>
-            ) : visibleEvalResults.length === 0 ? (
-              <Empty
-                title="No evaluation results saved"
-                hint={
-                  selectedHistoryModel
-                    ? `No evaluation results have been recorded for ${selectedHistoryModel.name} yet.`
-                    : 'Run prompt evaluations or bits-per-byte calculations to save results.'
-                }
-                action={
-                  <Link
-                    className="btn btn-sm btn-primary"
-                    to={
-                      selectedHistoryModelId
-                        ? `/evaluations?model=${selectedHistoryModelId}`
-                        : '/evaluations'
-                    }
-                  >
-                    Run evaluation →
-                  </Link>
-                }
-              />
-            ) : (
-              <div className="stack" style={{ gap: 12 }}>
-                {visibleEvalResults.map((r: EvalResult) => (
-                  <article
-                    key={r.id}
-                    className="card"
-                    style={{
-                      padding: 14,
-                      background: 'var(--color-surface-soft)',
-                      border: '1px solid var(--rule-soft)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'baseline',
-                        flexWrap: 'wrap',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <Chip
-                          tone={
-                            r.result_type === 'prompt'
-                              ? 'ok'
-                              : r.result_type === 'bpb'
-                                ? 'warn'
-                                : 'idle'
-                          }
-                        >
-                          {r.result_type}
-                        </Chip>
-                        <h3 className="h3" style={{ margin: 0 }}>
-                          {r.model_name}
-                        </h3>
-                        {r.checkpoint_id ? (
-                          <span className="muted" style={{ fontSize: '0.8rem' }}>
-                            (ckpt: {r.checkpoint_id.slice(0, 8)}…)
-                          </span>
-                        ) : null}
-                      </div>
-                      <span className="muted" style={{ fontSize: '0.85rem' }}>
-                        {relativeDate(r.created_at)}
-                      </span>
-                    </div>
+              if (filtered.length === 0) {
+                return (
+                  <Empty
+                    title="No saved evaluation results yet"
+                    hint="Run a prompt set evaluation, bits-per-byte check, or benchmark to record history for this model."
+                  />
+                );
+              }
 
-                    {/* Score / Main content */}
-                    <div style={{ marginTop: 8 }}>
-                      {r.result_type === 'bpb' ? (
-                        <div
-                          style={{
-                            padding: 10,
-                            borderRadius: 6,
-                            background: 'rgba(0, 0, 0, 0.2)',
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: 16,
-                            alignItems: 'center',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              Bits per byte (BPB)
+              return (
+                <div className="stack">
+                  {filtered.map((r) => {
+                    const isExpanded = Boolean(expandedResultIds[r.id]);
+                    const isLongPrompt = (r.prompt?.length ?? 0) > 120;
+                    const isLongAnswer = (r.answer?.length ?? 0) > 180;
+                    const needsToggle =
+                      r.result_type === 'prompt' && (isLongPrompt || isLongAnswer);
+
+                    const displayPrompt =
+                      !isExpanded && isLongPrompt
+                        ? `${r.prompt?.slice(0, 120)}…`
+                        : (r.prompt ?? '');
+                    const displayAnswer =
+                      !isExpanded && isLongAnswer
+                        ? `${r.answer?.slice(0, 180)}…`
+                        : (r.answer ?? '');
+
+                    const identifier =
+                      r.result_type === 'benchmark'
+                        ? (r.benchmark_name ?? 'Benchmark')
+                        : r.result_type === 'bpb'
+                          ? ((r.settings?.dataset_name as string | undefined) ??
+                            r.benchmark_name ??
+                            'Dataset snapshot')
+                          : ((r.settings?.prompt_set_name as string | undefined) ?? 'Prompt');
+
+                    const checkpointText = r.checkpoint_id
+                      ? `Checkpoint ${r.checkpoint_id.slice(0, 8)}`
+                      : typeof r.settings?.checkpoint_step === 'number'
+                        ? `Step ${r.settings.checkpoint_step}`
+                        : 'Base / latest weights';
+
+                    const settingsSummary = Object.entries(r.settings ?? {})
+                      .filter(
+                        ([k, v]) =>
+                          v !== null &&
+                          v !== undefined &&
+                          !['prompt_set_name', 'dataset_name', 'evaluation_name'].includes(k),
+                      )
+                      .map(([k, v]) => `${k}: ${String(v)}`)
+                      .join(' · ');
+
+                    return (
+                      <div key={r.id} className="subcard stack">
+                        <div className="subcard-head">
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 8,
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Chip
+                              tone={
+                                r.result_type === 'bpb'
+                                  ? 'ok'
+                                  : r.result_type === 'benchmark'
+                                    ? 'warn'
+                                    : 'idle'
+                              }
+                            >
+                              {r.result_type === 'bpb'
+                                ? 'Bits-per-byte'
+                                : r.result_type === 'benchmark'
+                                  ? 'Benchmark'
+                                  : 'Prompt answer'}
+                            </Chip>
+                            <strong>{r.model_name}</strong>
+                            <span className="muted" style={{ fontSize: '0.85em' }}>
+                              ({checkpointText})
+                            </span>
+                            <span className="badge">{identifier}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            <span className="muted" style={{ fontSize: '0.85em' }}>
+                              {relativeDate(r.created_at)}
+                            </span>
+                            <Link className="btn btn-sm" to={`/compare?a=${r.id}`}>
+                              Compare result →
+                            </Link>
+                            <ConfirmButton
+                              label="Delete"
+                              confirmLabel="Delete result"
+                              onConfirm={() => removeResult.mutate(r.id)}
+                              disabled={removeResult.isPending}
+                            />
+                          </div>
+                        </div>
+
+                        {r.result_type === 'benchmark' ? (
+                          <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
+                            <div>
+                              <span className="muted" style={{ fontSize: '0.85em' }}>
+                                Score:{' '}
+                              </span>
+                              <strong className="mono" style={{ fontSize: '1.05em' }}>
+                                {r.score !== null ? r.score.toFixed(4) : '—'}
+                              </strong>
+                            </div>
+                          </div>
+                        ) : r.result_type === 'bpb' ? (
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 16,
+                              alignItems: 'baseline',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div>
+                              <span className="muted" style={{ fontSize: '0.85em' }}>
+                                Bits per byte:{' '}
+                              </span>
+                              <strong className="mono" style={{ fontSize: '1.05em' }}>
+                                {r.bpb !== null ? r.bpb.toFixed(4) : '—'}
+                              </strong>
+                            </div>
+                            {r.val_loss !== null ? (
+                              <div>
+                                <span className="muted" style={{ fontSize: '0.85em' }}>
+                                  Val loss (nats):{' '}
+                                </span>
+                                <span className="mono">{r.val_loss.toFixed(4)}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="stack" style={{ gap: 6 }}>
+                            <div>
+                              <span className="muted" style={{ fontSize: '0.82em' }}>
+                                Prompt:{' '}
+                              </span>
+                              <span style={{ fontWeight: 500 }}>{displayPrompt}</span>
                             </div>
                             <div
                               style={{
-                                fontSize: '1.25rem',
-                                fontWeight: 700,
-                                color: '#38bdf8',
+                                background: 'var(--bg-subtle, rgba(0,0,0,0.03))',
+                                padding: '8px 10px',
+                                borderRadius: 6,
+                                fontFamily: 'var(--font-mono, monospace)',
+                                fontSize: '0.88em',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
                               }}
                             >
-                              {r.bpb !== null && r.bpb !== undefined ? r.bpb.toFixed(4) : '—'}
+                              {displayAnswer}
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                              (lower is better)
-                            </div>
+                            {needsToggle ? (
+                              <div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm"
+                                  onClick={() => toggleResultExpand(r.id)}
+                                >
+                                  {isExpanded ? 'Show less' : 'Show full prompt & answer'}
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              Total NLL
-                            </div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-                              {r.total_nll !== null && r.total_nll !== undefined
-                                ? `${r.total_nll.toFixed(2)} nats`
-                                : '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              Scored bytes
-                            </div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-                              {r.scored_bytes?.toLocaleString() ?? '—'}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              Scored tokens
-                            </div>
-                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-                              {r.scored_tokens?.toLocaleString() ?? '—'}
-                            </div>
-                          </div>
-                        </div>
-                      ) : r.result_type === 'benchmark' ? (
+                        )}
+
                         <div
+                          className="muted"
                           style={{
-                            padding: 10,
-                            borderRadius: 6,
-                            background: 'rgba(0, 0, 0, 0.2)',
+                            display: 'flex',
+                            gap: 12,
+                            flexWrap: 'wrap',
+                            fontSize: '0.8em',
                           }}
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            {r.benchmark_name || 'Benchmark score'}:{' '}
-                            <span style={{ fontSize: '1.1rem', color: 'var(--accent)' }}>
-                              {r.benchmark_score ?? '—'}
-                            </span>
-                          </div>
+                          <span>
+                            Settings: <code>{settingsSummary || 'default'}</code>
+                          </span>
+                          <span>
+                            Code version: <code>{r.code_version || 'Unavailable'}</code>
+                          </span>
                         </div>
-                      ) : (
-                        <div>
-                          <p style={{ margin: '0 0 6px', fontSize: '0.9rem' }}>
-                            <strong>Prompt:</strong>{' '}
-                            <span className="muted">
-                              {r.prompt
-                                ? r.prompt.length > 80
-                                  ? `${r.prompt.slice(0, 80)}…`
-                                  : r.prompt
-                                : 'No prompt text'}
-                            </span>
-                          </p>
-                          <details className="disclosure">
-                            <summary>
-                              <strong>View full prompt & generated answer</strong>
-                              <span className="muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>
-                                ({r.answer ? `${r.answer.length} characters` : 'empty'})
-                              </span>
-                            </summary>
-                            <div className="stack" style={{ gap: 8, marginTop: 8 }}>
-                              <div>
-                                <span className="label" style={{ fontSize: '0.75rem' }}>
-                                  Prompt input
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: '4px 0',
-                                    padding: 8,
-                                    borderRadius: 6,
-                                    background: 'var(--surface)',
-                                    border: '1px solid var(--rule)',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    fontFamily: 'inherit',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {r.prompt}
-                                </pre>
-                              </div>
-                              <div>
-                                <span className="label" style={{ fontSize: '0.75rem' }}>
-                                  Generated answer
-                                </span>
-                                <pre
-                                  style={{
-                                    margin: '4px 0',
-                                    padding: 8,
-                                    borderRadius: 6,
-                                    background: 'var(--surface)',
-                                    border: '1px solid var(--rule)',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    fontSize: '0.85rem',
-                                  }}
-                                >
-                                  {r.answer || <span className="muted">No answer generated.</span>}
-                                </pre>
-                              </div>
-                            </div>
-                          </details>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Metadata: Settings & Code version */}
-                    <div
-                      style={{
-                        marginTop: 10,
-                        paddingTop: 8,
-                        borderTop: '1px solid var(--rule-soft)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: 8,
-                        fontSize: '0.8rem',
-                      }}
-                    >
-                      <div className="muted">
-                        <span>Settings: {formatSettings(r.settings)}</span>
-                        <span style={{ margin: '0 8px' }}>·</span>
-                        <span>
-                          Code version:{' '}
-                          {r.code_version ? (
-                            <code title={r.code_version}>{r.code_version.slice(0, 7)}</code>
-                          ) : (
-                            <span className="muted">Unavailable</span>
-                          )}
-                        </span>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <Link className="btn btn-sm" to={`/compare?a=${r.id}`}>
-                          Compare result →
-                        </Link>
-                        <ConfirmButton
-                          label="Delete"
-                          confirmLabel="Delete result"
-                          onConfirm={() => deleteResult.mutate(r.id)}
-                          disabled={deleteResult.isPending}
-                        />
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
+          )}
+        </div>
+      </Card>
     </>
   );
+}
+
+// where an imported model came from, with its pinned version cut short
+function hubFacts(model: Model): { license: string; commit: string } | null {
+  if (model.source !== 'hub') return null;
+  const hub = (model.config?.hub ?? {}) as { license?: string; commit?: string };
+  return { license: hub.license ?? 'unknown', commit: (hub.commit ?? 'unknown').slice(0, 7) };
 }
 
 function SizeRow({
@@ -1058,71 +953,4 @@ function SizeRow({
       )}
     </tr>
   );
-}
-
-function GpuDetails({ seen }: { seen: GpuCheck }) {
-  return (
-    <>
-      {seen.cards.length === 0 ? (
-        <>
-          <p>
-            No NVIDIA graphics card was found. Training would run on the processor, which is much
-            slower.
-          </p>
-          {seen.tool_said ? (
-            <p className="muted">The card's driver said: {seen.tool_said}</p>
-          ) : null}
-        </>
-      ) : (
-        seen.cards.map((card) => (
-          <dl className="preview-counts" key={card.index}>
-            <div>
-              <dt>{seen.cards.length > 1 ? `Card ${card.index}` : 'Card'}</dt>
-              <dd>{card.name}</dd>
-            </div>
-            <div>
-              <dt>Memory</dt>
-              <dd>{gigabytes(card.memory_bytes)}</dd>
-            </div>
-            <div>
-              <dt>Driver</dt>
-              <dd>{card.driver}</dd>
-            </div>
-            <div>
-              <dt>Compute capability</dt>
-              <dd>{card.compute_capability ?? 'Unknown'}</dd>
-            </div>
-          </dl>
-        ))
-      )}
-      <TorchNote seen={seen} />
-    </>
-  );
-}
-
-function TorchNote({ seen }: { seen: GpuCheck }) {
-  if (seen.torch === 'missing') {
-    return (
-      <Notice tone="warn">
-        PyTorch isn't installed, so this computer can't train yet. Add the train extra from the
-        README.
-      </Notice>
-    );
-  }
-  if (seen.torch === 'cpu' && seen.cards.length > 0) {
-    return (
-      <Notice tone="warn">
-        PyTorch {seen.torch_version} is installed without graphics card support, so training would
-        use the processor. Reinstall PyTorch with CUDA from the README.
-      </Notice>
-    );
-  }
-  if (seen.torch === 'cuda') {
-    return (
-      <p className="muted">
-        PyTorch {seen.torch_version} with CUDA {seen.torch_cuda}
-      </p>
-    );
-  }
-  return seen.torch_version ? <p className="muted">PyTorch {seen.torch_version}</p> : null;
 }

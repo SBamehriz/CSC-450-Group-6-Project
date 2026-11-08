@@ -181,6 +181,8 @@ const ICONS = {
   pieces: 'M4 6h7v5H4zM13 6h7v5h-7zM4 13h4v5H4zM10 13h10v5H10z',
   tokens: 'M5 5h14M5 9h14M5 13h9M5 17h6M17 14l3 3-3 3',
   eval: 'M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  computer: 'M4 5h16v11H4zM9 20h6M12 16v4',
+  compare: 'M4 6h7v12H4zM13 6h7v12h-7z',
 } as const;
 
 export function Icon({ name }: { name: keyof typeof ICONS }) {

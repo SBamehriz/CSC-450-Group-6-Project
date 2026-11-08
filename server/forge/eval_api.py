@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from forge.config import get_settings
 from forge.core.metrics import ImportedModelAdapter, _get_validation_file_info
 from forge.db import get_session
 from forge.errors import ApiError
@@ -389,8 +390,14 @@ def create_bpb_evaluation(
     _, val_hash = _get_validation_file_info(dataset)
 
     model_source = payload.model_source
+    imported_name = payload.imported_model_name
+    picked = session.get(Model, payload.model_id) if payload.model_id else None
+    if picked is not None and picked.source == "hub" and picked.artifact_uri:
+        # a model imported from the hub is scored from its own folder
+        model_source = "imported"
+        imported_name = str(get_settings().data_dir / picked.artifact_uri)
     if model_source == "imported":
-        model_name = (payload.imported_model_name or "").strip()
+        model_name = (imported_name or "").strip()
         if not model_name:
             raise ApiError(400, "missing_model_name", "An imported model name must be provided.")
         if not ImportedModelAdapter.is_available():
@@ -400,7 +407,9 @@ def create_bpb_evaluation(
                 "Imported model evaluation depends on SP9.8 (transformers/imported model "
                 "interface), which is not yet installed in this environment.",
             )
-        model_id = None
+        model_id = picked.id if picked is not None else None
+        if picked is not None:
+            model_name = picked.name
         tok_identity = f"hf-tokenizer:{model_name}"
     else:
         if not payload.model_id:
@@ -455,7 +464,7 @@ def create_bpb_evaluation(
             "eval_type": "bpb",
             "bpb_eval_id": str(eval_id),
             "model_id": str(model_id) if model_id else None,
-            "imported_model_name": payload.imported_model_name,
+            "imported_model_name": imported_name,
             "model_source": model_source,
             "checkpoint_id": str(payload.checkpoint_id) if payload.checkpoint_id else None,
             "dataset_id": str(dataset.id),
@@ -540,6 +549,7 @@ def _eval_result_to_out(r: EvalResult) -> EvalResultOut:
         scored_bytes=r.scored_bytes,
         scored_tokens=r.scored_tokens,
         benchmark_name=r.benchmark_name,
+        score=r.benchmark_score,
         benchmark_score=r.benchmark_score,
         benchmark_scores=r.benchmark_scores,
         created_at=r.created_at,
@@ -614,6 +624,8 @@ def delete_eval_result(
             parent_bpb = session.get(BpbEvaluation, ev_id)
             if parent_bpb is not None:
                 session.delete(parent_bpb)
+            parent_job = session.get(Job, ev_id)
+            if parent_job is not None and parent_job.job_type in ("benchmark", "prompt_compare"):
+                session.delete(parent_job)
     session.commit()
     return Response(status_code=204)
-

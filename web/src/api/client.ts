@@ -24,6 +24,8 @@ export type RunCreate = components['schemas']['RunCreate'];
 export type RunPage = components['schemas']['Page_RunOut_'];
 export type MetricPoint = components['schemas']['MetricPointOut'];
 export type RunMetrics = components['schemas']['RunMetricsOut'];
+export type TrainSettings = components['schemas']['TrainSettings'];
+export type Checkpoint = components['schemas']['CheckpointOut'];
 export type Tokenizer = components['schemas']['TokenizerOut'];
 export type TokenizerCreate = components['schemas']['TokenizerCreate'];
 export type DatasetBuild = components['schemas']['DatasetBuildOut'];
@@ -41,6 +43,21 @@ export type EvaluationCreate = components['schemas']['EvaluationCreate'];
 export type BpbEvaluation = components['schemas']['BpbEvaluationOut'];
 export type BpbEvaluationCreate = components['schemas']['BpbEvaluationCreate'];
 export type EvalResult = components['schemas']['EvalResultOut'];
+export type GpuCard = components['schemas']['GpuCard'];
+export type Shape = components['schemas']['ShapeIn'];
+export type SpeedTestCreate = components['schemas']['SpeedTestCreate'];
+export type SpeedTest = components['schemas']['SpeedTestOut'];
+export type EstimateRequest = components['schemas']['EstimateRequest'];
+export type Estimate = components['schemas']['EstimateOut'];
+export type HubImportRequest = components['schemas']['HubImportRequest'];
+export type BenchmarkPlan = components['schemas']['BenchmarkPlanOut'];
+export type BenchmarkCreate = components['schemas']['BenchmarkCreate'];
+export type BenchmarkResult = components['schemas']['BenchmarkResult'];
+export type BenchmarkScore = components['schemas']['BenchmarkScore'];
+export type PromptCompareCreate = components['schemas']['PromptCompareCreate'];
+export type PromptRun = components['schemas']['PromptCompareResult'];
+export type CompareModel = components['schemas']['CompareModel'];
+export type Comparison = components['schemas']['CompareOut'];
 
 export const DOCUMENT_PAGE = 50;
 export const RUN_PAGE = 20;
@@ -179,7 +196,7 @@ export const api = {
   listPresets: () => request<Preset[]>('/presets'),
   checkGpu: () => request<GpuCheck>('/gpu'),
 
-  // Models (SP8.9)
+  // Models
   listModels: (params?: { offset?: number; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.offset !== undefined) query.set('offset', String(params.offset));
@@ -221,7 +238,7 @@ export const api = {
       };
     }>('/models/presets'),
 
-  // Runs and Training History (SP8.18 & SP8.12)
+  // Runs and Training History
   listRuns: (params?: { status?: string; offset?: number; limit?: number }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set('status', params.status);
@@ -234,6 +251,10 @@ export const api = {
   createRun: (payload: RunCreate) =>
     request<Run>('/runs', { method: 'POST', body: JSON.stringify(payload) }),
   deleteRun: (id: string) => request<void>(`/runs/${id}`, { method: 'DELETE' }),
+  changeRun: (id: string, action: 'start' | 'stop' | 'resume') =>
+    request<Run>(`/runs/${id}/${action}`, { method: 'POST' }),
+  listCheckpoints: (id: string) => request<Checkpoint[]>(`/runs/${id}/checkpoints`),
+  checkpointDownloadUrl: (id: string) => `${API_PREFIX}/checkpoints/${id}/download`,
   getRunMetrics: (id: string, limit?: number) => {
     const qs = limit ? `?limit=${limit}` : '';
     return request<RunMetrics>(`/runs/${id}/metrics${qs}`);
@@ -253,6 +274,32 @@ export const api = {
     request<DatasetBuild>('/dataset-builds', { method: 'POST', body: JSON.stringify(payload) }),
   deleteBuild: (id: string) => request<void>(`/dataset-builds/${id}`, { method: 'DELETE' }),
   buildManifestUrl: (id: string) => `${API_PREFIX}/dataset-builds/${id}/manifest`,
+  getJob: (id: string) => request<Job>(`/jobs/${id}`),
+
+  // measuring this computer
+  startSpeedTest: (payload: SpeedTestCreate) =>
+    request<Job>('/speed-tests', { method: 'POST', body: JSON.stringify(payload) }),
+  listSpeedTests: () => request<SpeedTest[]>('/speed-tests'),
+  estimate: (payload: EstimateRequest) =>
+    request<Estimate>('/estimate', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // models from the hub, and save points out to other tools
+  importModel: (payload: HubImportRequest) =>
+    request<Job>('/models/import', { method: 'POST', body: JSON.stringify(payload) }),
+  exportCheckpoint: (id: string) => request<Job>(`/checkpoints/${id}/export`, { method: 'POST' }),
+  checkpointExportUrl: (id: string) => `${API_PREFIX}/checkpoints/${id}/export`,
+
+  // comparing models
+  benchmarkPlan: (modelId: string) =>
+    request<BenchmarkPlan>(`/benchmarks/plan?model_id=${encodeURIComponent(modelId)}`),
+  startBenchmark: (payload: BenchmarkCreate) =>
+    request<Job>('/benchmarks', { method: 'POST', body: JSON.stringify(payload) }),
+  comparePrompts: (payload: PromptCompareCreate) =>
+    request<Job>('/prompt-comparisons', { method: 'POST', body: JSON.stringify(payload) }),
+  compare: (modelIds: string[]) =>
+    request<Comparison>(
+      `/compare?${modelIds.map((id) => `model_ids=${encodeURIComponent(id)}`).join('&')}`,
+    ),
   listJobs: () => request<{ items: Job[]; total: number }>('/jobs?limit=20&offset=0'),
   changeJob: (id: string, action: 'cancel' | 'retry') =>
     request<Job>(`/jobs/${id}/${action}`, { method: 'POST' }),
@@ -267,7 +314,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  // Prompt Sets & Evaluation (SP9.12)
+  // Prompt Sets & Evaluation
   listPromptSets: () => request<PromptSet[]>('/prompt-sets'),
   getPromptSet: (id: string) => request<PromptSet>(`/prompt-sets/${id}`),
   createPromptSet: (payload: PromptSetCreate) =>
@@ -282,7 +329,7 @@ export const api = {
     request<Evaluation>('/evaluations', { method: 'POST', body: JSON.stringify(payload) }),
   deleteEvaluation: (id: string) => request<void>(`/evaluations/${id}`, { method: 'DELETE' }),
 
-  // Bits Per Byte (BPB) Evaluations (SP9.11)
+  // Bits Per Byte (BPB) Evaluations
   listBpbEvaluations: () => request<BpbEvaluation[]>('/bpb-evaluations'),
   getBpbEvaluation: (id: string) => request<BpbEvaluation>(`/bpb-evaluations/${id}`),
   createBpbEvaluation: (payload: BpbEvaluationCreate) =>
@@ -294,10 +341,10 @@ export const api = {
 
   // Saved Evaluation Results
   listEvalResults: (params?: { result_type?: string; model_id?: string }) => {
-    const q = new URLSearchParams();
-    if (params?.result_type) q.set('result_type', params.result_type);
-    if (params?.model_id) q.set('model_id', params.model_id);
-    const qs = q.toString();
+    const query = new URLSearchParams();
+    if (params?.result_type) query.set('result_type', params.result_type);
+    if (params?.model_id) query.set('model_id', params.model_id);
+    const qs = query.toString();
     return request<EvalResult[]>(`/eval-results${qs ? `?${qs}` : ''}`);
   },
   getEvalResult: (id: string) => request<EvalResult>(`/eval-results/${id}`),

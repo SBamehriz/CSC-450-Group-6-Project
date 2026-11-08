@@ -36,7 +36,7 @@ def test_model_shape_validation_rules():
     assert f"between 1 and {MAX_N_LAYER}" in err
 
     # Invalid width
-    err = explain_shape_error(n_layer=4, d_model=1024, n_head=4, ctx_len=512)
+    err = explain_shape_error(n_layer=4, d_model=MAX_D_MODEL + 4, n_head=4, ctx_len=512)
     assert err is not None
     assert f"between 1 and {MAX_D_MODEL}" in err
 

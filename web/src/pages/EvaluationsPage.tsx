@@ -24,7 +24,6 @@ import {
   type Tone,
 } from '../components/ui';
 import { relativeDate } from '../lib/format';
-import ComparePage from './ComparePage';
 
 const EVAL_TONE: Record<string, Tone> = {
   completed: 'ok',
@@ -39,10 +38,9 @@ export default function EvaluationsPage() {
   const [params] = useSearchParams();
   const preselectedModelId = params.get('model') ?? '';
   const preselectedPromptSetId = params.get('prompt_set') ?? '';
-  const initialTab =
-    params.get('tab') === 'bpb' ? 'bpb' : params.get('tab') === 'compare' ? 'compare' : 'prompts';
+  const initialTab = params.get('tab') === 'bpb' ? 'bpb' : 'prompts';
 
-  const [tab, setTab] = useState<'prompts' | 'bpb' | 'compare'>(initialTab);
+  const [tab, setTab] = useState<'prompts' | 'bpb'>(initialTab);
   const [explain, setExplain] = useState(false);
   const [selectedEvalId, setSelectedEvalId] = useState<string | null>(null);
 
@@ -342,14 +340,7 @@ export default function EvaluationsPage() {
           >
             Bits per byte (BPB)
           </button>
-          <button
-            type="button"
-            className={tab === 'compare' ? 'on' : undefined}
-            aria-pressed={tab === 'compare'}
-            onClick={() => setTab('compare')}
-          >
-            Compare
-          </button>
+          <Link to="/compare">Compare</Link>
         </div>
       </div>
 
@@ -861,7 +852,7 @@ export default function EvaluationsPage() {
             </Card>
           </div>
         </div>
-      ) : tab === 'bpb' ? (
+      ) : (
         <div className="preparation-grid">
           {/* Left Column: Launch BPB Evaluation Form */}
           <div className="stack">
@@ -1140,8 +1131,6 @@ export default function EvaluationsPage() {
             </Card>
           </div>
         </div>
-      ) : (
-        <ComparePage />
       )}
     </>
   );

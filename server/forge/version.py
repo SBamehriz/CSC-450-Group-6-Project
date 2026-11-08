@@ -34,4 +34,3 @@ def current_commit() -> str | None:
     except Exception as exc:
         log.debug("Could not read git HEAD: %s", exc)
     return None
-

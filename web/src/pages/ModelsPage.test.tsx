@@ -2,7 +2,14 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import { api, type GpuCheck, type Model, type Preset, type Vocabulary } from '../api/client';
+import {
+  ApiError,
+  api,
+  type GpuCheck,
+  type Model,
+  type Preset,
+  type Vocabulary,
+} from '../api/client';
 import { open } from '../test-utils';
 import ModelsPage from './ModelsPage';
 
@@ -32,6 +39,7 @@ const oneCard: GpuCheck = {
       index: 0,
       name: 'NVIDIA GeForce RTX 3090',
       memory_bytes: 24 * GB,
+      free_bytes: 20 * GB,
       driver: '595.79',
       compute_capability: '8.6',
     },
@@ -53,6 +61,7 @@ const mockVocab: Vocabulary = {
 
 const mockModel: Model = {
   id: 'model-1',
+  source: 'forge',
   name: 'nano-science',
   description: 'Nano model for science papers',
   preset: 'nano',
@@ -94,67 +103,82 @@ function showPage() {
   open(<ModelsPage />);
 }
 
-// ----------------------------------------------------
-// Sprint 7 Model Sizes & GPU Tests
-// ----------------------------------------------------
-it('judges each size against the card this computer has', async () => {
+it('judges each size against the memory free on the card right now', async () => {
   open(<ModelsPage />);
-  expect(await screen.findByText('NVIDIA GeForce RTX 3090', { selector: 'dd' })).toBeTruthy();
-  expect(screen.getByText('24.0 GB', { selector: 'dd' })).toBeTruthy();
-  expect(screen.getByText('PyTorch 2.14.1+cu130 with CUDA 13.0')).toBeTruthy();
   expect(
     await screen.findByRole('columnheader', { name: 'On NVIDIA GeForce RTX 3090' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(
+      /Fits is judged against the 20.0 GB free right now on NVIDIA GeForce RTX 3090/,
+    ),
   ).toBeTruthy();
   expect(rowOf('nano').getByText('4.0 GB')).toBeTruthy();
   expect(rowOf('nano').getByText('Fits')).toBeTruthy();
   expect(rowOf('135m').getByText('24.0 GB')).toBeTruthy();
-  expect(rowOf('135m').getByText('Fits')).toBeTruthy();
-
-  fireEvent.change(screen.getByLabelText('Sequences per step'), { target: { value: '16' } });
-  expect(rowOf('135m').getByText('48.0 GB')).toBeTruthy();
   expect(rowOf('135m').getByText('Too big')).toBeTruthy();
-  expect(rowOf('nano').getByText('Fits')).toBeTruthy();
+
+  fireEvent.change(screen.getByLabelText('Sequences per step'), { target: { value: '2' } });
+  expect(rowOf('135m').getByText('6.0 GB')).toBeTruthy();
+  expect(rowOf('135m').getByText('Fits')).toBeTruthy();
 });
 
-it('says when there is no card and judges nothing', async () => {
+it('judges nothing when there is no card', async () => {
   vi.mocked(api.checkGpu).mockResolvedValue({
     cards: [],
-    tool_said: 'NVIDIA-SMI has failed.',
+    tool_said: null,
     torch: 'missing',
     torch_version: null,
     torch_cuda: null,
   });
   open(<ModelsPage />);
-  expect(await screen.findByText(/No NVIDIA graphics card was found/)).toBeTruthy();
-  expect(screen.getByText("The card's driver said: NVIDIA-SMI has failed.")).toBeTruthy();
-  expect(screen.getByText(/PyTorch isn't installed/)).toBeTruthy();
+  expect(await screen.findByText(/No graphics card was found/)).toBeTruthy();
   expect(await screen.findByRole('cell', { name: '135m' })).toBeTruthy();
   expect(screen.queryByText('Fits')).toBeNull();
   expect(screen.queryByText('Too big')).toBeNull();
 });
 
-it('warns when PyTorch cannot use the card that is there', async () => {
-  vi.mocked(api.checkGpu).mockResolvedValue({
-    ...oneCard,
-    torch: 'cpu',
-    torch_version: '2.14.1+cpu',
-    torch_cuda: null,
+it('shows why the hub refused a model', async () => {
+  vi.spyOn(api, 'importModel').mockRejectedValue(
+    new ApiError(409, 'import_refused', 'This model only has pickle weights.'),
+  );
+  open(<ModelsPage />);
+  fireEvent.change(await screen.findByLabelText('Model on the hub'), {
+    target: { value: 'someone/old-model' },
+  });
+  fireEvent.click(screen.getByLabelText('Run it on the CPU (slower)'));
+  fireEvent.click(screen.getByRole('button', { name: 'Import model' }));
+  expect(await screen.findByText('This model only has pickle weights.')).toBeTruthy();
+  expect(api.importModel).toHaveBeenCalledWith({
+    repo_id: 'someone/old-model',
+    revision: 'main',
+    name: null,
+    on_cpu: true,
+  });
+});
+
+it('labels an imported model with its licence and version', async () => {
+  vi.mocked(api.listAllModels).mockResolvedValue({
+    items: [
+      {
+        ...mockModel,
+        id: 'model-hub',
+        name: 'gpt2',
+        source: 'hub',
+        preset: null,
+        config: {
+          hub: { repo_id: 'openai-community/gpt2', commit: 'c0ffee12345', license: 'mit' },
+        },
+      },
+    ],
+    total: 1,
   });
   open(<ModelsPage />);
-  expect(await screen.findByText(/installed without graphics card support/)).toBeTruthy();
+  expect(await screen.findByText('gpt2')).toBeTruthy();
+  expect(screen.getByText('Imported')).toBeTruthy();
+  expect(screen.getByText('Licence mit, version c0ffee1')).toBeTruthy();
 });
 
-it('recovers when a check fails', async () => {
-  vi.mocked(api.checkGpu).mockRejectedValueOnce(new Error('Server unavailable.'));
-  open(<ModelsPage />);
-  expect(await screen.findByText('Server unavailable.')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-  expect(await screen.findByText('NVIDIA GeForce RTX 3090', { selector: 'dd' })).toBeTruthy();
-});
-
-// ----------------------------------------------------
-// Sprint 8 SP8.9 Model Builder & Persistence Tests
-// ----------------------------------------------------
 it('displays parameter count and estimated memory before saving', async () => {
   showPage();
   expect(await screen.findByText('Create a model architecture')).toBeTruthy();

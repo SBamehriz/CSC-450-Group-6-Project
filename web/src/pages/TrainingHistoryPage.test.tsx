@@ -16,6 +16,8 @@ const mockRuns: Run[] = [
     model_preset: 'nano',
     dataset_id: 'ds-1',
     dataset_name: 'Science papers',
+    seed: 0,
+    tokens_seen: 2_048_000,
     status: 'completed',
     device: 'cpu',
     batch_size: 2,
@@ -41,6 +43,8 @@ const mockRuns: Run[] = [
     model_preset: 'micro',
     dataset_id: null,
     dataset_name: null,
+    seed: 0,
+    tokens_seen: 0,
     status: 'pending',
     device: 'cpu',
     batch_size: 1,
@@ -62,6 +66,9 @@ const mockRuns: Run[] = [
 
 beforeEach(() => {
   vi.spyOn(api, 'listRuns').mockResolvedValue({ items: mockRuns, total: 2 });
+  vi.spyOn(api, 'listAllModels').mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, 'listBuilds').mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, 'listTokenizers').mockResolvedValue({ items: [], total: 0 });
 });
 
 afterEach(() => {

@@ -6,8 +6,8 @@ from forge import gpu
 from forge.train.presets import PRESETS, training_memory
 
 CARDS = (
-    "0, GPU-1111aaaa, NVIDIA GeForce RTX 3090, 24576, 595.79, 8.6\n"
-    "1, GPU-2222bbbb, NVIDIA A100-SXM4-80GB, 81920, 580.12, 8.0\n"
+    "0, GPU-1111aaaa, NVIDIA GeForce RTX 3090, 24576, 20000, 595.79, 8.6\n"
+    "1, GPU-2222bbbb, NVIDIA A100-SXM4-80GB, 81920, 81000, 580.12, 8.0\n"
 )
 
 
@@ -49,6 +49,7 @@ def test_gpu_check_reports_every_card_the_driver_lists(client, monkeypatch, tmp_
             "index": 0,
             "name": "NVIDIA GeForce RTX 3090",
             "memory_bytes": 24576 * 2**20,
+            "free_bytes": 20000 * 2**20,
             "driver": "595.79",
             "compute_capability": "8.6",
         },
@@ -56,6 +57,7 @@ def test_gpu_check_reports_every_card_the_driver_lists(client, monkeypatch, tmp_
             "index": 1,
             "name": "NVIDIA A100-SXM4-80GB",
             "memory_bytes": 81920 * 2**20,
+            "free_bytes": 81000 * 2**20,
             "driver": "580.12",
             "compute_capability": "8.0",
         },
@@ -80,10 +82,12 @@ def test_gpu_check_passes_on_what_a_failing_driver_said(client, monkeypatch, tmp
 @pytest.mark.parametrize(
     "line",
     [
-        "0, GPU-1111aaaa, Some Card, [N/A], 595.79, 8.6",
-        "0, not-a-uuid, Some Card, 8192, 595.79, 8.6",
-        "0, GPU-1111aaaa, Some Card, 100, 595.79, 8.6",
-        "0, GPU-1111aaaa, , 8192, 595.79, 8.6",
+        "0, GPU-1111aaaa, Some Card, [N/A], 4096, 595.79, 8.6",
+        "0, GPU-1111aaaa, Some Card, 8192, [N/A], 595.79, 8.6",
+        "0, not-a-uuid, Some Card, 8192, 4096, 595.79, 8.6",
+        "0, GPU-1111aaaa, Some Card, 100, 50, 595.79, 8.6",
+        "0, GPU-1111aaaa, , 8192, 4096, 595.79, 8.6",
+        "0, GPU-1111aaaa, Some Card, 8192, 595.79, 8.6",
         "No devices were found",
     ],
 )
@@ -92,8 +96,19 @@ def test_an_answer_that_does_not_add_up_is_not_a_card(line):
 
 
 def test_a_card_name_with_a_comma_keeps_its_numbers():
-    card = gpu._a_card("2, GPU-3333cccc, Card, Rev 2, 12288, 595.79, 8.9")
-    assert card == gpu.Card(2, "Card, Rev 2", 12288 * 2**20, "595.79", "8.9")
+    card = gpu._a_card("2, GPU-3333cccc, Card, Rev 2, 12288, 4096, 595.79, 8.9")
+    assert card == gpu.Card(2, "Card, Rev 2", 12288 * 2**20, "595.79", "8.9", 4096 * 2**20)
+
+
+def test_free_memory_is_read_fresh_each_check(client, monkeypatch, tmp_path):
+    stand_in(monkeypatch, tmp_path, "0, GPU-1111aaaa, Card, 8192, 6000, 595.79, 8.6\n")
+    assert client.get("/api/gpu").json()["cards"][0]["free_bytes"] == 6000 * 2**20
+    stand_in(monkeypatch, tmp_path, "0, GPU-1111aaaa, Card, 8192, 1500, 595.79, 8.6\n")
+    assert client.get("/api/gpu").json()["cards"][0]["free_bytes"] == 1500 * 2**20
+
+
+def test_more_free_than_total_is_not_a_card():
+    assert gpu._a_card("0, GPU-1111aaaa, Card, 8192, 9000, 595.79, 8.6") is None
 
 
 @pytest.mark.parametrize(

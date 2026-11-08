@@ -27,6 +27,17 @@ train = [
     "torch>=2.3",
     "numpy>=1.26",
 ]
+# importing from the hub, exporting, and asking two models the same prompts
+hub = [
+    "huggingface-hub>=0.25",
+    "safetensors>=0.4",
+    "transformers>=4.44",
+]
+# benchmarks through EleutherAI's harness
+bench = [
+    "lm-eval>=0.4.5",
+    "accelerate>=0.26",
+]
 converter = [
     "docling>=2.126.0",
 ]

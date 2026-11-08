@@ -1,8 +1,8 @@
 """add eval_results table
 
-Revision ID: 0009
-Revises: 0008
-Created: 2026-11-06
+Revision ID: 0010
+Revises: 0009
+Created: 2026-11-08
 """
 
 from collections.abc import Sequence
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0009"
-down_revision: str | None = "0008"
+revision: str = "0010"
+down_revision: str | None = "0009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -65,4 +65,3 @@ def downgrade() -> None:
     op.drop_index("ix_eval_results_evaluation_id", table_name="eval_results")
     op.drop_index("ix_eval_results_model_id", table_name="eval_results")
     op.drop_table("eval_results")
-

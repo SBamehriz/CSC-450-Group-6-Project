@@ -14,6 +14,8 @@ const LINKS = [
   { to: '/models', label: 'Models', icon: 'model' },
   { to: '/evaluations', label: 'Evaluation', icon: 'eval' },
   { to: '/history', label: 'History', icon: 'history' },
+  { to: '/compare', label: 'Compare', icon: 'compare' },
+  { to: '/gpu', label: 'This computer', icon: 'computer' },
 ] as const;
 
 export default function Layout({ children }: { children: ReactNode }) {

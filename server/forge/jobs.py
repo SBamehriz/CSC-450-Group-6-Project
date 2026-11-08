@@ -1,5 +1,4 @@
-"""One local queue, one process at a time. No network worker protocol."""
-
+import importlib
 import logging
 import os
 import shutil
@@ -20,17 +19,25 @@ from forge.schemas import JobPayload, JobProgress
 
 log = logging.getLogger(__name__)
 
-RUNNER_TYPES = (
-    "tokenizer_train",
-    "dataset_build",
-    "dataset_import",
-    "snapshot_create",
-    "eval",
-)
+ARTIFACT_TYPES = ("tokenizer_train", "dataset_build")
+OWN_ROW_TYPES = ("dataset_import", "snapshot_create", "eval")
+TASKS = {
+    "train_run": "forge.train.loop",
+    "speed_test": "forge.train.speed",
+    "model_import": "forge.hub",
+    "model_export": "forge.train.export",
+    "benchmark": "forge.harness",
+    "prompt_compare": "forge.prompts",
+}
+RUNNER_TYPES = (*ARTIFACT_TYPES, *OWN_ROW_TYPES, *TASKS)
 
 
 class Canceled(Exception):
     """The user asked us to stop; throw away unfinished artifacts."""
+
+
+class JobFailed(Exception):
+    """A plain reason a person can act on, shown as is."""
 
 
 def target_for(session: Session, job: Job) -> Tokenizer | DatasetBuild:
@@ -66,6 +73,9 @@ def _recover_unlocked(session: Session) -> None:
     # cannot prove that: the OS may have reused it since the previous crash.
     running = select(Job).where(Job.status == "running", Job.job_type.in_(RUNNER_TYPES))
     for job in session.scalars(running):
+        if job.job_type in TASKS:
+            _recover_task(session, job)
+            continue
         if job.job_type in ("dataset_import", "snapshot_create", "eval"):
             job.status = "cancelled" if job.cancel_requested else "failed"
             job.error = (
@@ -114,6 +124,26 @@ def _recover_unlocked(session: Session) -> None:
         job.pid = None
         job.completed_at = datetime.now(UTC)
     session.commit()
+
+
+def _task_module(job_type: str):
+    return importlib.import_module(TASKS[job_type])
+
+
+def _recover_task(session: Session, job: Job) -> None:
+    # the process doing it is gone: say so, and let the task tidy its own rows
+    message = (
+        "Canceled before it finished."
+        if job.cancel_requested
+        else "The app stopped before this job finished."
+    )
+    recover = getattr(_task_module(job.job_type), "recover", None)
+    if recover is not None:
+        message = recover(session, job) or message
+    job.status = "cancelled" if job.cancel_requested else "failed"
+    job.error = message
+    job.pid = None
+    job.completed_at = datetime.now(UTC)
 
 
 def recover_jobs() -> None:
@@ -187,11 +217,23 @@ def execute_job(job_id: uuid.UUID) -> None:
     target_id: uuid.UUID | None = None
 
     with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        if job is not None and job.job_type in TASKS:
+            kind = job.job_type
+        else:
+            kind = None
+    if kind is not None:
+        execute_task(job_id)
+        return
+
+    with Session(get_engine()) as session:
         session.execute(text("BEGIN IMMEDIATE"))
         job = session.get(Job, job_id)
         if job is None or job.status != "pending":
             return
         kind = job.job_type
+        # read now: the row is detached once this session closes
+        eval_type = job.payload.get("eval_type")
         if kind in ("dataset_import", "snapshot_create", "eval"):
             if job.cancel_requested:
                 job.status = "cancelled"
@@ -306,7 +348,7 @@ def execute_job(job_id: uuid.UUID) -> None:
         return
 
     if kind == "eval":
-        if job.payload.get("eval_type") == "bpb":
+        if eval_type == "bpb":
             from forge.core.metrics import execute_bpb_eval_job
 
             execute_bpb_eval_job(job_id)
@@ -370,6 +412,72 @@ def execute_job(job_id: uuid.UUID) -> None:
             session.commit()
 
 
+def execute_task(job_id: uuid.UUID) -> None:
+    # each task module has run(job_id) -> result dict, and may have
+    # finish(job_id, status, message) to update its own rows at the end
+    with Session(get_engine()) as session:
+        session.execute(text("BEGIN IMMEDIATE"))
+        job = session.get(Job, job_id)
+        if job is None or job.status != "pending":
+            return
+        if job.cancel_requested:
+            job.status = "cancelled"
+            job.completed_at = datetime.now(UTC)
+            session.commit()
+            return
+        job.status = "running"
+        job.pid = os.getpid()
+        job.attempts += 1
+        job.started_at = datetime.now(UTC)
+        job.error = None
+        session.commit()
+        kind = job.job_type
+    module = _task_module(kind)
+    finish = getattr(module, "finish", None)
+    try:
+        result = module.run(job_id)
+    except BaseException as problem:
+        canceled = isinstance(problem, Canceled)
+        if isinstance(problem, JobFailed | Canceled):
+            message = str(problem) or "Canceled before it finished."
+        else:
+            log.exception("job failed job_id=%s", job_id)
+            message = f"Could not finish this job: {problem}"
+        with Session(get_engine()) as session:
+            job = session.get(Job, job_id)
+            assert job is not None
+            canceled = canceled or job.cancel_requested
+            job.status = "cancelled" if canceled else "failed"
+            job.error = message
+            job.pid = None
+            job.completed_at = datetime.now(UTC)
+            session.commit()
+        if finish is not None:
+            finish(job_id, "cancelled" if canceled else "failed", message)
+        if not isinstance(problem, Exception):
+            raise
+        return
+    with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        job.status = "completed"
+        job.result = result or {}
+        job.pid = None
+        job.completed_at = datetime.now(UTC)
+        session.commit()
+    if finish is not None:
+        finish(job_id, "completed", None)
+
+
+def enqueue_task(session: Session, kind: str, payload: dict) -> Job:
+    if kind not in TASKS:
+        raise ValueError(f"unknown task {kind!r}")
+    job = Job(job_type=kind, payload=payload)
+    session.add(job)
+    session.commit()
+    return job
+
+
 def run_pending() -> int:
     done = 0
     with _lock():
@@ -391,4 +499,6 @@ def run_pending() -> int:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    run_pending()
+    from forge import jobs as imported
+
+    imported.run_pending()

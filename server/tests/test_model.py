@@ -151,11 +151,11 @@ def test_bad_config_is_caught_early():
             "This model would read a context of 333 word pieces, and Forge's "
             "GPT reads 64 to 2,048, in steps of 64.",
         ),
-        ({"n_layer": 25}, "This model would have 25 blocks, and Forge's GPT has 1 to 24."),
-        ({"n_layer": 0}, "This model would have 0 blocks, and Forge's GPT has 1 to 24."),
+        ({"n_layer": 49}, "This model would have 49 blocks, and Forge's GPT has 1 to 48."),
+        ({"n_layer": 0}, "This model would have 0 blocks, and Forge's GPT has 1 to 48."),
         (
-            {"d_model": 1024, "n_head": 8},
-            "This model would have a width of 1,024, and Forge's GPT has a width of 1 to 768.",
+            {"d_model": 4096, "n_head": 8},
+            "This model would have a width of 4,096, and Forge's GPT has a width of 1 to 2,048.",
         ),
         ({"dropout": 0.5}, "Dropout goes from 0, the default, to 0.2."),
     ):

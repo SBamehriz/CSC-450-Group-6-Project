@@ -375,6 +375,24 @@ def test_flags_fire_on_their_thresholds():
     assert "long_lines" in flag(long_line, measure(long_line))
 
 
+def test_two_short_real_paragraphs_are_not_too_short():
+    text = (
+        "Missouri State runs a small lab for students who want to try machine learning. "
+        "It is open most weekday afternoons.\n\n"
+        "Anyone can book a seat online, and staff are around to help with setup questions."
+    )
+    assert "too_short" not in flag(text, measure(text))
+
+
+def test_junk_lines_are_still_too_short():
+    for junk in (
+        "Page 3 of 12",
+        "Click here to subscribe to our newsletter today!",
+        "Home | About",
+    ):
+        assert "too_short" in flag(junk, measure(junk))
+
+
 def test_a_normal_document_has_no_flags():
     text = "This is an ordinary paragraph of English prose. " * 30
     assert flag(text, measure(text)) == []

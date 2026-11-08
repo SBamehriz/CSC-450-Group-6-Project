@@ -2,7 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { api, type GpuCheck, type Model, type ModelCreate, type Preset } from '../api/client';
+import {
+  api,
+  type EvalResult,
+  type GpuCheck,
+  type Model,
+  type ModelCreate,
+  type Preset,
+} from '../api/client';
 import {
   Card,
   CardHead,
@@ -30,6 +37,14 @@ const PRESETS: Record<string, PresetConfig> = {
 };
 
 const STEPS = [1, 2, 4, 8, 16];
+
+function formatSettings(settings: Record<string, unknown> | undefined): string {
+  if (!settings || Object.keys(settings).length === 0) return 'Default settings';
+  return Object.entries(settings)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k}: ${String(v)}`)
+    .join(' · ');
+}
 
 function calculateFormulaParams(
   n_layer: number,
@@ -85,6 +100,17 @@ export default function ModelsPage() {
   const [ctxLen, setCtxLen] = useState(512);
   const [search, setSearch] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [resultDeleteError, setResultDeleteError] = useState<string | null>(null);
+  const [selectedHistoryModelId, setSelectedHistoryModelId] = useState<string>('');
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>('all');
+
+  const evalResults = useQuery({
+    queryKey: ['evalResults', selectedHistoryModelId],
+    queryFn: () =>
+      api.listEvalResults
+        ? api.listEvalResults({ model_id: selectedHistoryModelId || undefined })
+        : Promise.resolve([]),
+  });
 
   // Selected vocabulary details
   const vocabs = vocabularies.data ?? [];
@@ -166,12 +192,31 @@ export default function ModelsPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteModel(id),
-    onSuccess: () => {
+    onSuccess: (_data, deletedModelId) => {
       setDeleteError(null);
+      if (selectedHistoryModelId === deletedModelId) {
+        setSelectedHistoryModelId('');
+      }
       void queryClient.invalidateQueries({ queryKey: ['models'] });
+      void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
     },
     onError: (err: Error) => {
       setDeleteError(err.message);
+    },
+  });
+
+  const deleteResult = useMutation({
+    mutationFn: (id: string) => api.deleteEvalResult(id),
+    onSuccess: () => {
+      setDeleteError(null);
+      setResultDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
+      void queryClient.invalidateQueries({ queryKey: ['evaluations'] });
+      void queryClient.invalidateQueries({ queryKey: ['bpbEvaluations'] });
+      void queryClient.invalidateQueries({ queryKey: ['models'] });
+    },
+    onError: (err: Error) => {
+      setResultDeleteError(err.message);
     },
   });
 
@@ -181,6 +226,16 @@ export default function ModelsPage() {
       .toLowerCase()
       .includes(search.trim().toLowerCase()),
   );
+
+  const allEvalResults = useMemo(() => evalResults.data ?? [], [evalResults.data]);
+  const visibleEvalResults = useMemo(() => {
+    return allEvalResults.filter((r: EvalResult) => {
+      if (historyTypeFilter !== 'all' && r.result_type !== historyTypeFilter) return false;
+      return true;
+    });
+  }, [allEvalResults, historyTypeFilter]);
+
+  const selectedHistoryModel = savedModels.find((m: Model) => m.id === selectedHistoryModelId);
 
   return (
     <>
@@ -589,6 +644,22 @@ export default function ModelsPage() {
                             <Link className="btn btn-sm" to={`/evaluations?model=${m.id}`}>
                               Evaluate
                             </Link>
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${selectedHistoryModelId === m.id ? 'btn-primary' : ''}`}
+                              onClick={() => {
+                                setSelectedHistoryModelId(
+                                  selectedHistoryModelId === m.id ? '' : m.id,
+                                );
+                                const el = document.getElementById('model-evaluation-history');
+                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                            >
+                              Results
+                            </button>
+                            <Link className="btn btn-sm" to={`/compare?model=${m.id}`}>
+                              Compare
+                            </Link>
                             <ConfirmButton
                               label="Delete"
                               confirmLabel="Delete model"
@@ -606,6 +677,353 @@ export default function ModelsPage() {
           )}
         </div>
       </Card>
+
+      {/* Model Evaluation History Card */}
+      <div id="model-evaluation-history" style={{ marginTop: 24 }}>
+        <Card>
+          <CardHead
+            title={
+              selectedHistoryModel
+                ? `Evaluation history · ${selectedHistoryModel.name}`
+                : 'Model evaluation history'
+            }
+            end={
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {savedModels.length > 0 ? (
+                  <label
+                    className="field"
+                    style={{
+                      margin: 0,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <span className="label" style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                      Model:
+                    </span>
+                    <select
+                      className="input input-sm"
+                      value={selectedHistoryModelId}
+                      onChange={(e) => setSelectedHistoryModelId(e.target.value)}
+                    >
+                      <option value="">All models</option>
+                      {savedModels.map((m: Model) => (
+                        <option key={m.id} value={m.id}>
+                          Model: {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <Link
+                  className="btn btn-sm"
+                  to={
+                    selectedHistoryModelId ? `/compare?model=${selectedHistoryModelId}` : '/compare'
+                  }
+                >
+                  Compare results →
+                </Link>
+              </div>
+            }
+          />
+          <div className="card-body stack">
+            {/* Filter Bar */}
+            <div className="seg" role="tablist" aria-label="Evaluation result type">
+              <button
+                type="button"
+                className={historyTypeFilter === 'all' ? 'on' : undefined}
+                aria-pressed={historyTypeFilter === 'all'}
+                onClick={() => setHistoryTypeFilter('all')}
+              >
+                All results ({allEvalResults.length})
+              </button>
+              <button
+                type="button"
+                className={historyTypeFilter === 'prompt' ? 'on' : undefined}
+                aria-pressed={historyTypeFilter === 'prompt'}
+                onClick={() => setHistoryTypeFilter('prompt')}
+              >
+                Prompts ({allEvalResults.filter((r) => r.result_type === 'prompt').length})
+              </button>
+              <button
+                type="button"
+                className={historyTypeFilter === 'bpb' ? 'on' : undefined}
+                aria-pressed={historyTypeFilter === 'bpb'}
+                onClick={() => setHistoryTypeFilter('bpb')}
+              >
+                Bits per byte ({allEvalResults.filter((r) => r.result_type === 'bpb').length})
+              </button>
+              <button
+                type="button"
+                className={historyTypeFilter === 'benchmark' ? 'on' : undefined}
+                aria-pressed={historyTypeFilter === 'benchmark'}
+                onClick={() => setHistoryTypeFilter('benchmark')}
+              >
+                Benchmarks ({allEvalResults.filter((r) => r.result_type === 'benchmark').length})
+              </button>
+            </div>
+
+            {/* Content States */}
+            {resultDeleteError ? <Notice tone="bad">{resultDeleteError}</Notice> : null}
+            {evalResults.error ? (
+              <ErrorBox
+                message={evalResults.error.message}
+                onRetry={() => void evalResults.refetch()}
+              />
+            ) : evalResults.isPending ? (
+              <p role="status">Loading evaluation history…</p>
+            ) : visibleEvalResults.length === 0 ? (
+              <Empty
+                title="No evaluation results saved"
+                hint={
+                  selectedHistoryModel
+                    ? `No evaluation results have been recorded for ${selectedHistoryModel.name} yet.`
+                    : 'Run prompt evaluations or bits-per-byte calculations to save results.'
+                }
+                action={
+                  <Link
+                    className="btn btn-sm btn-primary"
+                    to={
+                      selectedHistoryModelId
+                        ? `/evaluations?model=${selectedHistoryModelId}`
+                        : '/evaluations'
+                    }
+                  >
+                    Run evaluation →
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="stack" style={{ gap: 12 }}>
+                {visibleEvalResults.map((r: EvalResult) => (
+                  <article
+                    key={r.id}
+                    className="card"
+                    style={{
+                      padding: 14,
+                      background: 'var(--color-surface-soft)',
+                      border: '1px solid var(--rule-soft)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <Chip
+                          tone={
+                            r.result_type === 'prompt'
+                              ? 'ok'
+                              : r.result_type === 'bpb'
+                                ? 'warn'
+                                : 'idle'
+                          }
+                        >
+                          {r.result_type}
+                        </Chip>
+                        <h3 className="h3" style={{ margin: 0 }}>
+                          {r.model_name}
+                        </h3>
+                        {r.checkpoint_id ? (
+                          <span className="muted" style={{ fontSize: '0.8rem' }}>
+                            (ckpt: {r.checkpoint_id.slice(0, 8)}…)
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="muted" style={{ fontSize: '0.85rem' }}>
+                        {relativeDate(r.created_at)}
+                      </span>
+                    </div>
+
+                    {/* Score / Main content */}
+                    <div style={{ marginTop: 8 }}>
+                      {r.result_type === 'bpb' ? (
+                        <div
+                          style={{
+                            padding: 10,
+                            borderRadius: 6,
+                            background: 'rgba(0, 0, 0, 0.2)',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 16,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Bits per byte (BPB)
+                            </div>
+                            <div
+                              style={{
+                                fontSize: '1.25rem',
+                                fontWeight: 700,
+                                color: '#38bdf8',
+                              }}
+                            >
+                              {r.bpb !== null && r.bpb !== undefined ? r.bpb.toFixed(4) : '—'}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                              (lower is better)
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Total NLL
+                            </div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                              {r.total_nll !== null && r.total_nll !== undefined
+                                ? `${r.total_nll.toFixed(2)} nats`
+                                : '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Scored bytes
+                            </div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                              {r.scored_bytes?.toLocaleString() ?? '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              Scored tokens
+                            </div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                              {r.scored_tokens?.toLocaleString() ?? '—'}
+                            </div>
+                          </div>
+                        </div>
+                      ) : r.result_type === 'benchmark' ? (
+                        <div
+                          style={{
+                            padding: 10,
+                            borderRadius: 6,
+                            background: 'rgba(0, 0, 0, 0.2)',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>
+                            {r.benchmark_name || 'Benchmark score'}:{' '}
+                            <span style={{ fontSize: '1.1rem', color: 'var(--accent)' }}>
+                              {r.benchmark_score ?? '—'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p style={{ margin: '0 0 6px', fontSize: '0.9rem' }}>
+                            <strong>Prompt:</strong>{' '}
+                            <span className="muted">
+                              {r.prompt
+                                ? r.prompt.length > 80
+                                  ? `${r.prompt.slice(0, 80)}…`
+                                  : r.prompt
+                                : 'No prompt text'}
+                            </span>
+                          </p>
+                          <details className="disclosure">
+                            <summary>
+                              <strong>View full prompt & generated answer</strong>
+                              <span className="muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>
+                                ({r.answer ? `${r.answer.length} characters` : 'empty'})
+                              </span>
+                            </summary>
+                            <div className="stack" style={{ gap: 8, marginTop: 8 }}>
+                              <div>
+                                <span className="label" style={{ fontSize: '0.75rem' }}>
+                                  Prompt input
+                                </span>
+                                <pre
+                                  style={{
+                                    margin: '4px 0',
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--rule)',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    fontFamily: 'inherit',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  {r.prompt}
+                                </pre>
+                              </div>
+                              <div>
+                                <span className="label" style={{ fontSize: '0.75rem' }}>
+                                  Generated answer
+                                </span>
+                                <pre
+                                  style={{
+                                    margin: '4px 0',
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--rule)',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    fontSize: '0.85rem',
+                                  }}
+                                >
+                                  {r.answer || <span className="muted">No answer generated.</span>}
+                                </pre>
+                              </div>
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Metadata: Settings & Code version */}
+                    <div
+                      style={{
+                        marginTop: 10,
+                        paddingTop: 8,
+                        borderTop: '1px solid var(--rule-soft)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 8,
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      <div className="muted">
+                        <span>Settings: {formatSettings(r.settings)}</span>
+                        <span style={{ margin: '0 8px' }}>·</span>
+                        <span>
+                          Code version:{' '}
+                          {r.code_version ? (
+                            <code title={r.code_version}>{r.code_version.slice(0, 7)}</code>
+                          ) : (
+                            <span className="muted">Unavailable</span>
+                          )}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <Link className="btn btn-sm" to={`/compare?a=${r.id}`}>
+                          Compare result →
+                        </Link>
+                        <ConfirmButton
+                          label="Delete"
+                          confirmLabel="Delete result"
+                          onConfirm={() => deleteResult.mutate(r.id)}
+                          disabled={deleteResult.isPending}
+                        />
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
     </>
   );
 }

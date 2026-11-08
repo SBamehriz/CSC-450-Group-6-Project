@@ -23,8 +23,9 @@ from forge.config import get_settings
 from forge.db import get_engine
 from forge.errors import ApiError
 from forge.jobs import Canceled, report
-from forge.models import BpbEvaluation, Checkpoint, Dataset, Job, Model, Tokenizer
+from forge.models import BpbEvaluation, Checkpoint, Dataset, EvalResult, Job, Model, Tokenizer
 from forge.snapshots import read_snapshot
+from forge.version import current_commit
 
 log = logging.getLogger(__name__)
 
@@ -333,7 +334,7 @@ def _iter_validation_documents(dataset: Dataset, path: Path | None) -> Iterator[
 
 def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
     """Execute bits-per-byte evaluation job on held-out validation text."""
-    with Session(get_engine()) as session:
+    with Session(get_engine(), expire_on_commit=False) as session:
         job = session.get(Job, job_id)
         if not job:
             return
@@ -452,6 +453,23 @@ def execute_bpb_eval_job(job_id: uuid.UUID) -> None:
                             "validation_file_hash": bpb_eval.validation_file_hash,
                         }
                         run_record.metrics = cur_metrics
+
+                session.add(
+                    EvalResult(
+                        id=uuid.uuid4(),
+                        result_type="bpb",
+                        model_id=bpb_eval.model_id,
+                        model_name=bpb_eval.model_name,
+                        checkpoint_id=bpb_eval.checkpoint_id,
+                        evaluation_id=bpb_eval.id,
+                        settings=dict(bpb_eval.settings or {}),
+                        code_version=current_commit(),
+                        bpb=final_bpb,
+                        total_nll=accumulator.total_nll_nats,
+                        scored_bytes=accumulator.total_scored_bytes,
+                        scored_tokens=accumulator.total_scored_tokens,
+                    )
+                )
             if job:
                 job.status = "completed"
                 job.pid = None

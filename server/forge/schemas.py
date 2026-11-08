@@ -619,3 +619,24 @@ class BpbEvaluationOut(BaseModel):
     created_at: datetime
 
 
+class EvalResultOut(BaseModel):
+    id: uuid.UUID
+    result_type: str
+    model_id: uuid.UUID | None
+    model_name: str
+    checkpoint_id: uuid.UUID | None
+    evaluation_id: uuid.UUID | None
+    settings: dict
+    code_version: str | None
+    prompt: str | None
+    answer: str | None
+    bpb: float | None
+    total_nll: float | None
+    scored_bytes: int | None
+    scored_tokens: int | None
+    benchmark_name: str | None
+    benchmark_score: float | None
+    benchmark_scores: dict
+    created_at: datetime
+
+

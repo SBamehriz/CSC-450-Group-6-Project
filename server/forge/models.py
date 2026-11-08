@@ -71,6 +71,7 @@ RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
 MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
 EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 BPB_EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
+EVAL_RESULT_TYPES = ("prompt", "bpb", "benchmark")
 
 
 def _sql_in(column: str, allowed: tuple[str, ...]) -> str:
@@ -409,6 +410,45 @@ class BpbEvaluation(Base):
         Index("ix_bpb_evaluations_model_id", "model_id"),
         Index("ix_bpb_evaluations_dataset_id", "dataset_id"),
         Index("ix_bpb_evaluations_status", "status"),
+    )
+
+
+class EvalResult(Base):
+    __tablename__ = "eval_results"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    result_type: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("models.id", ondelete="RESTRICT"), nullable=True
+    )
+    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("checkpoints.id", ondelete="RESTRICT"), nullable=True
+    )
+    # The parent evaluation record that produced this result row.
+    evaluation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Prompt results (result_type == "prompt")
+    prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # BPB results (result_type == "bpb")
+    bpb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_nll: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scored_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    scored_tokens: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Benchmark results (result_type == "benchmark")
+    benchmark_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    benchmark_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    benchmark_scores: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(_sql_in("result_type", EVAL_RESULT_TYPES), name="ck_eval_results_type"),
+        Index("ix_eval_results_model_id", "model_id"),
+        Index("ix_eval_results_evaluation_id", "evaluation_id"),
+        Index("ix_eval_results_result_type", "result_type"),
+        Index("ix_eval_results_created_at", "created_at"),
     )
 
 

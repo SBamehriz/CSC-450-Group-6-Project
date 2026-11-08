@@ -8,16 +8,27 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from forge.core.metrics import ImportedModelAdapter, _get_validation_file_info
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import BpbEvaluation, Dataset, Evaluation, Job, Model, PromptSet
+from forge.models import (
+    BpbEvaluation,
+    Checkpoint,
+    Dataset,
+    EvalResult,
+    Evaluation,
+    Job,
+    Model,
+    PromptSet,
+    Run,
+)
 from forge.schemas import (
     BpbEvaluationCreate,
     BpbEvaluationOut,
+    EvalResultOut,
     EvaluationCreate,
     EvaluationOut,
     PromptSetCreate,
@@ -327,7 +338,7 @@ def delete_evaluation(
     evaluation_id: uuid.UUID,
     session: Session = Depends(get_session),
 ) -> Response:
-    """Delete an evaluation record."""
+    """Delete an evaluation record and its associated saved result rows."""
     evaluation = session.get(Evaluation, evaluation_id)
     if not evaluation:
         raise ApiError(404, "not_found", "Evaluation not found.")
@@ -335,6 +346,13 @@ def delete_evaluation(
         job = session.get(Job, evaluation.job_id)
         if job and job.status in ("pending", "running"):
             job.cancel_requested = True
+    linked_results = (
+        session.execute(select(EvalResult).where(EvalResult.evaluation_id == evaluation_id))
+        .scalars()
+        .all()
+    )
+    for r in linked_results:
+        session.delete(r)
     session.delete(evaluation)
     session.commit()
     return Response(status_code=204)
@@ -490,7 +508,112 @@ def delete_bpb_evaluation(
         job = session.get(Job, evaluation.job_id)
         if job and job.status in ("pending", "running"):
             job.cancel_requested = True
+    linked_results = (
+        session.execute(select(EvalResult).where(EvalResult.evaluation_id == evaluation_id))
+        .scalars()
+        .all()
+    )
+    for r in linked_results:
+        session.delete(r)
     session.delete(evaluation)
+    session.commit()
+    return Response(status_code=204)
+
+
+# --- Evaluation Results Endpoints ---
+
+
+def _eval_result_to_out(r: EvalResult) -> EvalResultOut:
+    return EvalResultOut(
+        id=r.id,
+        result_type=r.result_type,
+        model_id=r.model_id,
+        model_name=r.model_name,
+        checkpoint_id=r.checkpoint_id,
+        evaluation_id=r.evaluation_id,
+        settings=r.settings,
+        code_version=r.code_version,
+        prompt=r.prompt,
+        answer=r.answer,
+        bpb=r.bpb,
+        total_nll=r.total_nll,
+        scored_bytes=r.scored_bytes,
+        scored_tokens=r.scored_tokens,
+        benchmark_name=r.benchmark_name,
+        benchmark_score=r.benchmark_score,
+        benchmark_scores=r.benchmark_scores,
+        created_at=r.created_at,
+    )
+
+
+@router.get("/eval-results", response_model=list[EvalResultOut])
+def list_eval_results(
+    result_type: str | None = None,
+    model_id: uuid.UUID | None = None,
+    session: Session = Depends(get_session),
+) -> list[EvalResultOut]:
+    """List saved evaluation results, newest first.
+
+    Pass ``result_type`` to filter by ``prompt``, ``bpb``, or ``benchmark``.
+    Pass ``model_id`` to filter by model (including results associated with its checkpoints).
+    """
+    query = select(EvalResult).order_by(EvalResult.created_at.desc())
+    if result_type is not None:
+        query = query.where(EvalResult.result_type == result_type)
+    if model_id is not None:
+        ckpt_ids_subquery = (
+            select(Checkpoint.id)
+            .join(Run, Checkpoint.run_id == Run.id)
+            .where(Run.model_id == model_id)
+        )
+        query = query.where(
+            or_(
+                EvalResult.model_id == model_id,
+                EvalResult.checkpoint_id.in_(ckpt_ids_subquery),
+            )
+        )
+    records = session.execute(query).scalars().all()
+    return [_eval_result_to_out(r) for r in records]
+
+
+@router.get("/eval-results/{result_id}", response_model=EvalResultOut)
+def get_eval_result(
+    result_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> EvalResultOut:
+    """Retrieve a single saved evaluation result by ID."""
+    result = session.get(EvalResult, result_id)
+    if not result:
+        raise ApiError(404, "not_found", "Evaluation result not found.")
+    return _eval_result_to_out(result)
+
+
+@router.delete("/eval-results/{result_id}", status_code=204)
+def delete_eval_result(
+    result_id: uuid.UUID,
+    session: Session = Depends(get_session),
+) -> Response:
+    """Delete a saved evaluation result record."""
+    result = session.get(EvalResult, result_id)
+    if not result:
+        raise ApiError(404, "not_found", "Evaluation result not found.")
+    ev_id = result.evaluation_id
+    session.delete(result)
+    session.flush()
+    if ev_id is not None:
+        remaining = (
+            session.scalar(
+                select(func.count(EvalResult.id)).where(EvalResult.evaluation_id == ev_id)
+            )
+            or 0
+        )
+        if remaining == 0:
+            parent_eval = session.get(Evaluation, ev_id)
+            if parent_eval is not None:
+                session.delete(parent_eval)
+            parent_bpb = session.get(BpbEvaluation, ev_id)
+            if parent_bpb is not None:
+                session.delete(parent_bpb)
     session.commit()
     return Response(status_code=204)
 

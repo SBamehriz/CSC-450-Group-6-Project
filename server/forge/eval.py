@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from forge.db import get_engine
 from forge.jobs import Canceled, report
-from forge.models import Evaluation, Job, Model
+from forge.models import EvalResult, Evaluation, Job, Model
+from forge.version import current_commit
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _generate_for_prompt(
 
 def execute_eval_job(job_id: uuid.UUID) -> None:
     """Execute evaluation job from the captured prompts copy in job payload."""
-    with Session(get_engine()) as session:
+    with Session(get_engine(), expire_on_commit=False) as session:
         job = session.get(Job, job_id)
         if not job:
             return
@@ -120,6 +121,27 @@ def execute_eval_job(job_id: uuid.UUID) -> None:
                 evaluation.results = results
                 evaluation.status = "completed"
                 evaluation.completed_at = datetime.now(UTC)
+
+                settings = {
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": temperature,
+                }
+                code_ver = current_commit()
+                for entry in results:
+                    session.add(
+                        EvalResult(
+                            id=uuid.uuid4(),
+                            result_type="prompt",
+                            model_id=model.id if model else None,
+                            model_name=model.name if model else "unknown",
+                            checkpoint_id=None,
+                            evaluation_id=eval_id,
+                            settings=settings,
+                            code_version=code_ver,
+                            prompt=entry.get("prompt"),
+                            answer=entry.get("output"),
+                        )
+                    )
             if job:
                 job.status = "completed"
                 job.pid = None

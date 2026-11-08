@@ -24,6 +24,7 @@ import {
   type Tone,
 } from '../components/ui';
 import { relativeDate } from '../lib/format';
+import ComparePage from './ComparePage';
 
 const EVAL_TONE: Record<string, Tone> = {
   completed: 'ok',
@@ -38,9 +39,10 @@ export default function EvaluationsPage() {
   const [params] = useSearchParams();
   const preselectedModelId = params.get('model') ?? '';
   const preselectedPromptSetId = params.get('prompt_set') ?? '';
-  const initialTab = params.get('tab') === 'bpb' ? 'bpb' : 'prompts';
+  const initialTab =
+    params.get('tab') === 'bpb' ? 'bpb' : params.get('tab') === 'compare' ? 'compare' : 'prompts';
 
-  const [tab, setTab] = useState<'prompts' | 'bpb'>(initialTab);
+  const [tab, setTab] = useState<'prompts' | 'bpb' | 'compare'>(initialTab);
   const [explain, setExplain] = useState(false);
   const [selectedEvalId, setSelectedEvalId] = useState<string | null>(null);
 
@@ -94,6 +96,7 @@ export default function EvaluationsPage() {
     void queryClient.invalidateQueries({ queryKey: ['promptSets'] });
     void queryClient.invalidateQueries({ queryKey: ['evaluations'] });
     void queryClient.invalidateQueries({ queryKey: ['bpbEvaluations'] });
+    void queryClient.invalidateQueries({ queryKey: ['evalResults'] });
     void queryClient.invalidateQueries({ queryKey: ['datasets'] });
     void queryClient.invalidateQueries({ queryKey: ['jobs'] });
   };
@@ -338,6 +341,14 @@ export default function EvaluationsPage() {
             onClick={() => setTab('bpb')}
           >
             Bits per byte (BPB)
+          </button>
+          <button
+            type="button"
+            className={tab === 'compare' ? 'on' : undefined}
+            aria-pressed={tab === 'compare'}
+            onClick={() => setTab('compare')}
+          >
+            Compare
           </button>
         </div>
       </div>
@@ -850,7 +861,7 @@ export default function EvaluationsPage() {
             </Card>
           </div>
         </div>
-      ) : (
+      ) : tab === 'bpb' ? (
         <div className="preparation-grid">
           {/* Left Column: Launch BPB Evaluation Form */}
           <div className="stack">
@@ -1129,6 +1140,8 @@ export default function EvaluationsPage() {
             </Card>
           </div>
         </div>
+      ) : (
+        <ComparePage />
       )}
     </>
   );

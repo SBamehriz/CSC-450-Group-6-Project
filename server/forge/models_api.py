@@ -1,12 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from forge.db import get_session
 from forge.errors import ApiError
-from forge.models import Dataset, Model, Run
+from forge.models import BpbEvaluation, Checkpoint, Dataset, EvalResult, Evaluation, Model, Run
 from forge.schemas import (
     ModelCreate,
     ModelOut,
@@ -290,10 +291,49 @@ def delete_model(
     model_id: uuid.UUID,
     session: Session = Depends(get_session),
 ) -> Response:
-    """Delete a saved model only if no training run references it."""
+    """Delete a saved model only if no saved results or training runs reference it."""
     model = session.get(Model, model_id)
     if not model:
         raise ApiError(404, "not_found", "Model not found.")
+
+    ckpt_ids_subquery = (
+        select(Checkpoint.id)
+        .join(Run, Checkpoint.run_id == Run.id)
+        .where(Run.model_id == model_id)
+    )
+    saved_results_count = (
+        session.scalar(
+            select(func.count(EvalResult.id)).where(
+                or_(
+                    EvalResult.model_id == model_id,
+                    EvalResult.checkpoint_id.in_(ckpt_ids_subquery),
+                )
+            )
+        )
+        or 0
+    )
+    eval_count = (
+        session.scalar(select(func.count(Evaluation.id)).where(Evaluation.model_id == model_id))
+        or 0
+    )
+    bpb_eval_count = (
+        session.scalar(
+            select(func.count(BpbEvaluation.id)).where(
+                or_(
+                    BpbEvaluation.model_id == model_id,
+                    BpbEvaluation.checkpoint_id.in_(ckpt_ids_subquery),
+                )
+            )
+        )
+        or 0
+    )
+    total_saved = saved_results_count or (eval_count + bpb_eval_count)
+    if total_saved > 0:
+        msg = (
+            f"Cannot delete model '{model.name}' because it has {total_saved} saved "
+            "evaluation result(s). Delete its saved results first."
+        )
+        raise ApiError(409, "model_has_saved_results", msg)
 
     referencing_runs = (
         session.scalar(select(func.count(Run.id)).where(Run.model_id == model_id)) or 0
@@ -305,6 +345,15 @@ def delete_model(
         )
         raise ApiError(409, "model_in_use", msg)
 
-    session.delete(model)
-    session.commit()
+    try:
+        session.delete(model)
+        session.commit()
+    except IntegrityError as err:
+        session.rollback()
+        raise ApiError(
+            409,
+            "model_has_saved_results",
+            f"Cannot delete model '{model.name}' because it has saved evaluation results. "
+            "Delete its saved results first.",
+        ) from err
     return Response(status_code=204)

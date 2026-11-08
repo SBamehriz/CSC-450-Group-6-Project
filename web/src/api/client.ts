@@ -40,6 +40,7 @@ export type Evaluation = components['schemas']['EvaluationOut'];
 export type EvaluationCreate = components['schemas']['EvaluationCreate'];
 export type BpbEvaluation = components['schemas']['BpbEvaluationOut'];
 export type BpbEvaluationCreate = components['schemas']['BpbEvaluationCreate'];
+export type EvalResult = components['schemas']['EvalResultOut'];
 
 export const DOCUMENT_PAGE = 50;
 export const RUN_PAGE = 20;
@@ -290,4 +291,15 @@ export const api = {
     request<void>(`/bpb-evaluations/${id}`, { method: 'DELETE' }),
   computeRunBpb: (runId: string) =>
     request<BpbEvaluation>(`/runs/${runId}/bpb`, { method: 'POST' }),
+
+  // Saved Evaluation Results
+  listEvalResults: (params?: { result_type?: string; model_id?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.result_type) q.set('result_type', params.result_type);
+    if (params?.model_id) q.set('model_id', params.model_id);
+    const qs = q.toString();
+    return request<EvalResult[]>(`/eval-results${qs ? `?${qs}` : ''}`);
+  },
+  getEvalResult: (id: string) => request<EvalResult>(`/eval-results/${id}`),
+  deleteEvalResult: (id: string) => request<void>(`/eval-results/${id}`, { method: 'DELETE' }),
 };

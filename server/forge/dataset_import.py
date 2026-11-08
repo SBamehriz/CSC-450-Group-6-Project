@@ -307,7 +307,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
     """Execute the background dataset import job in bounded batches."""
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
-        if job is None or job.status != "pending":
+        if job is None or job.status != "running":
             return
         payload = job.payload
         bucket_id = uuid.UUID(payload["target_id"])

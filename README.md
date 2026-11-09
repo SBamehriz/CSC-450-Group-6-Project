@@ -149,6 +149,8 @@ uv run --project server --no-sync forge sweep --model "tiny" --set "main set" --
 
 Measured with 313 MB of text in seven 45 MB files (Linux, CPU, 7 GB of memory): upload took 56 s, the snapshot 6 s, a 16,384 word piece vocabulary 39 s, and the training set 83 s (69 million word pieces). The background process peaked at 2.5 GB. Text now reaches the vocabulary trainer and the tokenizer in pieces of about 100,000 characters; before that, the vocabulary step ran out of memory at 5.8 GB on the same files.
 
+**Importing a Hugging Face dataset.** On a collection's page, Import from Hugging Face takes a dataset name, its configuration, split and text column, and how many rows to import (All rows fills in the whole split). The import downloads the split's Parquet files from the hub one at a time, in a few big requests, drops empty and repeated rows, and groups rows so the collection gets at most about 2,000 files: a small import keeps one row per file, and 2 million short stories become about 2,000 files of about 1,000 stories each. It needs the prepare extra (pyarrow). A dataset with no Parquet copy on the hub falls back to the rows service, 100 rows a request, waiting and trying again when the hub says too many requests. Measured offline with 500,000 rows (390 MB of text): 51 s and 626 MB of memory. Not yet run against the real hub.
+
 A snapshot splits by file, so a few very large files make a poor validation split: seven files with 1% asked for gave one whole file, 14% of the text, to validation. Upload big text as many small files (about 1 MB each, up to 200 per upload) so the validation share comes out close to what you ask for. `scripts/split_text.py` does the cutting:
 
 ```bash

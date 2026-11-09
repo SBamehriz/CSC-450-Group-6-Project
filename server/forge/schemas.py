@@ -337,7 +337,7 @@ class DatasetImportCreate(BaseModel):
     config: str = Field(min_length=1, max_length=100)
     split: str = Field(min_length=1, max_length=100)
     text_column: str = Field(min_length=1, max_length=100)
-    limit: int = Field(default=500, ge=1, le=50000)
+    limit: int = Field(default=500, ge=1, le=100_000_000)
 
     @field_validator("dataset", "config", "split", "text_column")
     @classmethod
@@ -683,6 +683,7 @@ class EstimateRequest(BaseModel):
     shape: ShapeIn | None = None
     train_tokens: int = Field(ge=1)
     sequences_per_step: int = Field(default=4, ge=1, le=256)
+    # the hours you have on the card, to turn into a word piece budget
     budget_hours: float | None = Field(default=None, gt=0, le=10_000)
 
 
@@ -698,6 +699,7 @@ class EstimateOut(BaseModel):
     free_bytes: int | None
     fits: bool | None
     suggestion: str | None
+    # word pieces that fit in budget_hours, keeping a tenth for checks and saves
     budget_tokens: int | None = None
 
 

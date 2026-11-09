@@ -959,6 +959,7 @@ ocr = [
     { name = "rapidocr-onnxruntime" },
 ]
 prepare = [
+    { name = "pyarrow" },
     { name = "tokenizers" },
 ]
 train = [
@@ -988,6 +989,7 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'train'", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pyarrow", marker = "extra == 'prepare'", specifier = ">=15" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pypdf", specifier = ">=5.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },

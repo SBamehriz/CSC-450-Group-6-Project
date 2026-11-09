@@ -1,7 +1,10 @@
+import hashlib
 import json
 import logging
 import os
 import re
+import shutil
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,6 +32,12 @@ log = logging.getLogger(__name__)
 HF_HUB_API = "https://huggingface.co/api/datasets"
 HF_DATASETS_SERVER = "https://datasets-server.huggingface.co"
 BATCH_SIZE = 100
+TARGET_FILES = 2_000
+DOWNLOAD_CHUNK = 1 << 20
+ROWS_RETRIES = 6
+
+class NoParquetCopy(RuntimeError):
+    """The hub has no Parquet copy of this split, so rows come 100 at a time."""
 
 
 def get_hf_headers() -> dict[str, str]:
@@ -366,6 +375,25 @@ def import_dataset(job_id: uuid.UUID) -> None:
         failed=0,
     )
 
+    try:
+        urls = parquet_urls(canonical_id, config, split)
+    except NoParquetCopy:
+        log.info("%s has no Parquet copy, reading rows one request at a time", canonical_id)
+    else:
+        _import_from_parquet(
+            job_id,
+            bucket_id,
+            canonical_id,
+            resolved_revision,
+            config,
+            split,
+            text_column,
+            import_limit,
+            total,
+            urls,
+        )
+        return
+
     offset = 0
     while offset < import_limit:
         # Check cancellation
@@ -382,16 +410,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
             f"&offset={offset}&length={current_batch_size}"
         )
 
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                rows_data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as err:
-            raise RuntimeError(f"Hugging Face API returned error {err.code}: {err.reason}") from err
-        except Exception as err:
-            raise RuntimeError(
-                f"Network failure while streaming rows from Hugging Face: {err}"
-            ) from err
+        rows_data = _rows(url, headers)
 
         rows = rows_data.get("rows", [])
         if not rows:
@@ -501,4 +520,185 @@ def import_dataset(job_id: uuid.UUID) -> None:
         imported=imported,
         skipped=skipped,
         failed=failed,
+    )
+
+
+def _rows(url: str, headers: dict[str, str]) -> dict:
+    for attempt in range(ROWS_RETRIES + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            if err.code == 429 and attempt < ROWS_RETRIES:
+                time.sleep(min(60, 2**attempt))
+                continue
+            raise RuntimeError(f"Hugging Face API returned error {err.code}: {err.reason}") from err
+        except Exception as err:
+            raise RuntimeError(
+                f"Network failure while streaming rows from Hugging Face: {err}"
+            ) from err
+    raise RuntimeError("Hugging Face kept refusing requests. Try again later.")
+
+
+def parquet_urls(canonical_id: str, config: str, split: str) -> list[str]:
+    """The hub's Parquet copy of one split, as download links."""
+    url = (
+        f"{HF_DATASETS_SERVER}/parquet?dataset={urllib.parse.quote(canonical_id)}"
+        f"&config={urllib.parse.quote(config)}&split={urllib.parse.quote(split)}"
+    )
+    try:
+        request = urllib.request.Request(url, headers=get_hf_headers())
+        with urllib.request.urlopen(request, timeout=30) as response:
+            listing = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            raise NoParquetCopy(canonical_id) from err
+        raise RuntimeError(f"Hugging Face API returned error {err.code}: {err.reason}") from err
+    except Exception as err:
+        raise RuntimeError(f"Network failure while listing the Parquet files: {err}") from err
+    files = [
+        row["url"]
+        for row in listing.get("parquet_files", [])
+        if row.get("config") == config and row.get("split") == split and row.get("url")
+    ]
+    if not files:
+        raise NoParquetCopy(canonical_id)
+    return files
+
+
+def download(url: str, path: Path) -> None:
+    """Stream one file to disk, so a large file never sits in memory."""
+    request = urllib.request.Request(url, headers=get_hf_headers())
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, path.open("wb") as out:
+            shutil.copyfileobj(response, out, DOWNLOAD_CHUNK)
+    except urllib.error.HTTPError as err:
+        raise RuntimeError(f"Hugging Face returned error {err.code} for a data file.") from err
+    except OSError as err:
+        raise RuntimeError(f"The download of a data file stopped: {err}") from err
+
+
+def _import_from_parquet(
+    job_id: uuid.UUID,
+    bucket_id: uuid.UUID,
+    canonical_id: str,
+    revision: str,
+    config: str,
+    split: str,
+    text_column: str,
+    limit: int,
+    total: int,
+    urls: list[str],
+) -> None:
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as problem:
+        raise RuntimeError(
+            "Importing from Hugging Face needs pyarrow. Install the prepare extra from the "
+            "README first."
+        ) from problem
+
+    # a small import keeps one row per file; a big one groups rows evenly
+    rows_per_file = max(1, -(-limit // TARGET_FILES))
+    folder = get_settings().data_dir / "imports" / str(job_id)
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    total = total or limit
+    counts = {"processed": 0, "imported": 0, "skipped": 0, "failed": 0}
+    seen: set[bytes] = set()
+    pack: list[str] = []
+    first_row = 0
+    parts = 0
+
+    def say(message: str) -> None:
+        report(job_id, completed=counts["processed"], total=total, message=message, **counts)
+
+    def write_pack() -> None:
+        nonlocal pack, first_row, parts
+        if not pack:
+            return
+        raw_text = "\n\n".join(pack)
+        cleaned = clean(raw_text, encoding_suspect=False)
+        last_row = counts["processed"] - 1
+        with Session(get_engine()) as session:
+            twin = session.execute(
+                select(Document.id).where(
+                    Document.bucket_id == bucket_id,
+                    Document.content_hash == cleaned.content_hash,
+                )
+            ).first()
+            if twin is None and cleaned.text.strip():
+                doc = Document(
+                    bucket_id=bucket_id,
+                    filename=f"hf_{config}_{split}_part{parts:05d}.txt",
+                    source_format="txt",
+                    source_note=(
+                        f"Imported from Hugging Face: {canonical_id} (revision: {revision[:8]}, "
+                        f"config: {config}, split: {split}, rows {first_row} to {last_row}, "
+                        f"{len(pack):,} rows in this file)"
+                    ),
+                    raw_uri=_write_file(f"raw/{uuid.uuid4()}", raw_text.encode("utf-8")),
+                    status="parsed",
+                    content_hash=cleaned.content_hash,
+                    char_count=cleaned.char_count,
+                    word_count=cleaned.word_count,
+                    quality=cleaned.quality,
+                )
+                session.add(doc)
+                session.flush()
+                doc.text_uri = _write_file(f"text/{doc.id}.txt", cleaned.text.encode("utf-8"))
+                session.commit()
+                counts["imported"] += len(pack)
+                parts += 1
+            else:
+                counts["skipped"] += len(pack)
+        pack, first_row = [], counts["processed"]
+
+    try:
+        for index, url in enumerate(urls):
+            if counts["processed"] >= limit:
+                break
+            say(f"Downloading data file {index + 1} of {len(urls)}")
+            path = folder / f"{index:05d}.parquet"
+            download(url, path)
+            data = pq.ParquetFile(path)
+            if text_column not in data.schema_arrow.names:
+                raise RuntimeError(f"Column '{text_column}' is not in the dataset's data files.")
+            for batch in data.iter_batches(batch_size=10_000, columns=[text_column]):
+                for value in batch.column(0).to_pylist():
+                    if counts["processed"] >= limit:
+                        break
+                    counts["processed"] += 1
+                    if not isinstance(value, str):
+                        counts["failed" if value is not None else "skipped"] += 1
+                        continue
+                    text = value.strip()
+                    # the same row twice in one import is kept once
+                    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
+                    if not text or digest in seen:
+                        counts["skipped"] += 1
+                        continue
+                    seen.add(digest)
+                    pack.append(text)
+                    if len(pack) >= rows_per_file:
+                        write_pack()
+                say(
+                    f"{counts['processed']:,} / {total:,} records ({counts['imported']:,} "
+                    f"imported in {parts:,} files, {counts['skipped']:,} skipped, "
+                    f"{counts['failed']:,} failed)"
+                )
+            path.unlink(missing_ok=True)
+        write_pack()
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+    if counts["processed"] == 0:
+        raise RuntimeError(
+            f"No records found in dataset '{canonical_id}' config '{config}' split '{split}'."
+        )
+    say(
+        f"Import complete: {counts['imported']:,} rows imported in {parts:,} files, "
+        f"{counts['skipped']:,} skipped, {counts['failed']:,} failed "
+        f"({counts['processed']:,} processed)"
     )

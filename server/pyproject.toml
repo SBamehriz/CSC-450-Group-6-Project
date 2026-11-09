@@ -25,6 +25,8 @@ forge = "forge.cli:main"
 [project.optional-dependencies]
 prepare = [
     "tokenizers>=0.20,<0.24",
+    # reads a Hugging Face dataset's Parquet files for imports over 50,000 rows
+    "pyarrow>=15",
 ]
 # keep torch optional, its huge
 train = [

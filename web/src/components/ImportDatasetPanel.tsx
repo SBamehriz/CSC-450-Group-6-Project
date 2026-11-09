@@ -39,6 +39,9 @@ function progress(job: Job): {
   };
 }
 
+const MOST_FILES = 2_000;
+const MAX_ROWS = 100_000_000;
+
 export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportDatasetPanelProps) {
   const queryClient = useQueryClient();
   const [datasetInput, setDatasetInput] = useState('');
@@ -142,6 +145,8 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
   };
 
   const currentConfigObj = inspected?.configs.find((c) => c.name === selectedConfig);
+  const splitRows =
+    currentConfigObj?.splits.find((sp) => sp.name === selectedSplit)?.num_examples ?? null;
 
   const handleConfigChange = (cfgName: string) => {
     setSelectedConfig(cfgName);
@@ -288,20 +293,37 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
               </label>
 
               <label className="field">
-                <span className="label">Import size limit</span>
+                <span className="label">Rows to import</span>
                 <input
                   type="number"
                   className="input"
                   min={1}
-                  max={50000}
+                  max={MAX_ROWS}
                   value={importLimit}
                   disabled={importMutation.isPending || isImportRunning}
                   onChange={(event) => {
                     const val = Number.parseInt(event.target.value, 10);
-                    setImportLimit(Number.isNaN(val) ? 1 : Math.max(1, Math.min(50000, val)));
+                    setImportLimit(Number.isNaN(val) ? 1 : Math.max(1, Math.min(MAX_ROWS, val)));
                   }}
                 />
               </label>
+              {splitRows ? (
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={importMutation.isPending || isImportRunning}
+                  onClick={() => setImportLimit(Math.min(MAX_ROWS, splitRows))}
+                >
+                  All {splitRows.toLocaleString()} rows
+                </button>
+              ) : null}
+              {importLimit > MOST_FILES ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  About {Math.ceil(importLimit / MOST_FILES).toLocaleString()} rows go in each file,
+                  so the collection gets at most about {MOST_FILES.toLocaleString()} files instead
+                  of one per row.
+                </p>
+              ) : null}
             </div>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

@@ -525,7 +525,7 @@ export interface paths {
     post?: never;
     /**
      * Delete Model
-     * @description Delete a saved model only if no training run references it.
+     * @description Delete a saved model only if no saved results or training runs reference it.
      */
     delete: operations['delete_model_api_models__model_id__delete'];
     options?: never;
@@ -1020,7 +1020,7 @@ export interface paths {
     post?: never;
     /**
      * Delete Evaluation
-     * @description Delete an evaluation record.
+     * @description Delete an evaluation record and its associated saved result rows.
      */
     delete: operations['delete_evaluation_api_evaluations__evaluation_id__delete'];
     options?: never;
@@ -1071,6 +1071,53 @@ export interface paths {
      * @description Delete a BPB evaluation record and request job cancellation if running.
      */
     delete: operations['delete_bpb_evaluation_api_bpb_evaluations__evaluation_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eval-results': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Eval Results
+     * @description List saved evaluation results, newest first.
+     *
+     *     Pass ``result_type`` to filter by ``prompt``, ``bpb``, or ``benchmark``.
+     *     Pass ``model_id`` to filter by model (including results associated with its checkpoints).
+     */
+    get: operations['list_eval_results_api_eval_results_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/eval-results/{result_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Eval Result
+     * @description Retrieve a single saved evaluation result by ID.
+     */
+    get: operations['get_eval_result_api_eval_results__result_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete Eval Result
+     * @description Delete a saved evaluation result record.
+     */
+    delete: operations['delete_eval_result_api_eval_results__result_id__delete'];
     options?: never;
     head?: never;
     patch?: never;
@@ -1697,6 +1744,8 @@ export interface components {
       fits: boolean | null;
       /** Suggestion */
       suggestion: string | null;
+      /** Budget Tokens */
+      budget_tokens?: number | null;
     };
     /** EstimateRequest */
     EstimateRequest: {
@@ -1710,6 +1759,8 @@ export interface components {
        * @default 4
        */
       sequences_per_step: number;
+      /** Budget Hours */
+      budget_hours?: number | null;
     };
     /** EvalResultOut */
     EvalResultOut: {
@@ -1718,11 +1769,8 @@ export interface components {
        * Format: uuid
        */
       id: string;
-      /**
-       * Result Type
-       * @enum {string}
-       */
-      result_type: 'benchmark' | 'bpb' | 'prompt';
+      /** Result Type */
+      result_type: string;
       /** Model Id */
       model_id: string | null;
       /** Model Name */
@@ -1730,45 +1778,35 @@ export interface components {
       /** Checkpoint Id */
       checkpoint_id: string | null;
       /** Evaluation Id */
-      evaluation_id?: string | null;
-      /** Dataset Id */
-      dataset_id?: string | null;
-      /** Prompt Set Id */
-      prompt_set_id?: string | null;
-      /** Benchmark Name */
-      benchmark_name: string | null;
-      /** Score */
-      score: number | null;
-      /** Benchmark Score */
-      benchmark_score?: number | null;
-      /** Benchmark Scores */
-      benchmark_scores?: {
-        [key: string]: unknown;
-      };
-      /** Bpb */
-      bpb: number | null;
-      /** Total Nll */
-      total_nll?: number | null;
-      /** Scored Bytes */
-      scored_bytes?: number | null;
-      /** Scored Tokens */
-      scored_tokens?: number | null;
-      /** Val Loss */
-      val_loss?: number | null;
-      /** Prompt */
-      prompt: string | null;
-      /** Answer */
-      answer: string | null;
+      evaluation_id: string | null;
       /** Settings */
       settings: {
         [key: string]: unknown;
       };
       /** Code Version */
       code_version: string | null;
-      /** Source Evaluation Id */
-      source_evaluation_id?: string | null;
-      /** Source Bpb Evaluation Id */
-      source_bpb_evaluation_id?: string | null;
+      /** Prompt */
+      prompt: string | null;
+      /** Answer */
+      answer: string | null;
+      /** Bpb */
+      bpb: number | null;
+      /** Total Nll */
+      total_nll: number | null;
+      /** Scored Bytes */
+      scored_bytes: number | null;
+      /** Scored Tokens */
+      scored_tokens: number | null;
+      /** Benchmark Name */
+      benchmark_name: string | null;
+      /** Score */
+      score?: number | null;
+      /** Benchmark Score */
+      benchmark_score: number | null;
+      /** Benchmark Scores */
+      benchmark_scores: {
+        [key: string]: unknown;
+      };
       /**
        * Created At
        * Format: date-time
@@ -5287,6 +5325,98 @@ export interface operations {
       header?: never;
       path: {
         evaluation_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_eval_results_api_eval_results_get: {
+    parameters: {
+      query?: {
+        result_type?: string | null;
+        model_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvalResultOut'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_eval_result_api_eval_results__result_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        result_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvalResultOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_eval_result_api_eval_results__result_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        result_id: string;
       };
       cookie?: never;
     };

@@ -196,6 +196,7 @@ function EstimateCard({ presets }: { presets: Preset[] }) {
   const [size, setSize] = useState<Size>({ preset: presets[0]?.name ?? 'nano' });
   const [tokens, setTokens] = useState(100_000_000);
   const [sequences, setSequences] = useState(4);
+  const [hours, setHours] = useState(0);
   return (
     <Card>
       <CardHead title="How long would it take?" />
@@ -228,9 +229,30 @@ function EstimateCard({ presets }: { presets: Preset[] }) {
               ))}
             </select>
           </label>
+          <label className="field">
+            <span className="label">Hours you have (optional)</span>
+            <input
+              type="number"
+              className="input"
+              aria-label="Hours you have"
+              min={0}
+              step="any"
+              value={hours > 0 ? hours : ''}
+              onChange={(event) => setHours(Number(event.target.value) || 0)}
+            />
+          </label>
         </div>
         <EstimateBox
-          ask={tokens > 0 ? { ...size, train_tokens: tokens, sequences_per_step: sequences } : null}
+          ask={
+            tokens > 0
+              ? {
+                  ...size,
+                  train_tokens: tokens,
+                  sequences_per_step: sequences,
+                  budget_hours: hours > 0 ? hours : null,
+                }
+              : null
+          }
         />
       </div>
     </Card>

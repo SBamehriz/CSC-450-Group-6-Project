@@ -53,11 +53,14 @@ Choose the extras you need. Combine flags to keep multiple extras installed, bec
 - `hub`: importing open models from Hugging Face, exporting to its format, and asking two models the same prompts.
 - `bench`: benchmarks through EleutherAI's lm-evaluation-harness.
 
-On Windows the PyPI torch is CPU only. To train on an NVIDIA card, run this after the sync:
+On Windows the PyPI torch is CPU only. To train on an NVIDIA card, run this after the sync, then start the app with `--no-sync` so `uv run` does not put the CPU build back:
 
 ```bash
-uv pip install --project server torch --index-url https://download.pytorch.org/whl/cu124
+uv pip install --python server/.venv/Scripts/python.exe --reinstall-package torch "torch==2.14.1" --index-url https://download.pytorch.org/whl/cu130
+uv run --project server --no-sync python scripts/start.py --rebuild
 ```
+
+On Linux the PyPI torch already uses the card, so the sync alone is enough.
 
 ## Converter Usage
 
@@ -122,3 +125,32 @@ The training and validation counts and seed now describe real saved files. The s
 - **Compare.** Two models side by side: their size, vocabulary, training and loss, benchmark scores with a 95% interval and the chance level, and the same prompts answered with the same settings and seed. Benchmarks need 100 million parameters (ARC-Challenge and MMLU about 1 billion); below that they are refused with the reason, because the score would be chance-level noise. Bits per byte comes from Measure bits per byte on a run page, or from the Evaluation page, and shows "not measured yet" until it is measured. The same prompts can be typed in or taken from a saved prompt set.
 
 Not checked yet: training, speed tests, import and benchmarks on a real graphics card, and import and benchmarks against the real Hugging Face hub. The tests use a stand-in for the card's driver tool and for the hub.
+
+## Training from a terminal
+
+For a graphics card with no browser (a lab machine reached over ssh, or a job queue), the `forge` command trains without the app open. It uses the same database and data folder, so a run started here shows up in the app like any other, with its charts and save points.
+
+```bash
+uv run --project server --no-sync forge info                  # card, free memory, PyTorch
+uv run --project server --no-sync forge list                  # models, training sets, runs
+uv run --project server --no-sync forge speed-test --size 135m --sequences 8
+uv run --project server --no-sync forge budget --size 135m --sequences 8 --hours 20
+uv run --project server --no-sync forge train --name main --model "135m" --set "main set" --tokens 2000000000
+uv run --project server --no-sync forge train --name main     # the same command resumes it
+uv run --project server --no-sync forge sweep --model "tiny" --set "main set" --steps 300 --lr 3e-4,6e-4,1e-3 --batch 8,16
+```
+
+- `budget` turns the hours you have into word pieces: the measured speed times the hours, keeping a tenth for validation checks and save points. It prints the arithmetic and how many word pieces per parameter that is. The same number shows on This computer when you fill in the hours you have.
+- `train` makes the run the first time and resumes it from its last save point after that, so one run can span several time-limited jobs. `--stop-after 3.5` saves and stops after 3.5 hours, before a job limit ends it; Ctrl+C or the queue's stop signal also saves first.
+- `sweep` makes short runs that differ only in learning rate and batch size, trains them one after another and prints them ranked by validation loss.
+- To move work to another computer, copy the whole `forge-data` folder there and back.
+
+## Large amounts of text
+
+Measured with 313 MB of text in seven 45 MB files (Linux, CPU, 7 GB of memory): upload took 56 s, the snapshot 6 s, a 16,384 word piece vocabulary 39 s, and the training set 83 s (69 million word pieces). The background process peaked at 2.5 GB. Text now reaches the vocabulary trainer and the tokenizer in pieces of about 100,000 characters; before that, the vocabulary step ran out of memory at 5.8 GB on the same files.
+
+A snapshot splits by file, so a few very large files make a poor validation split: seven files with 1% asked for gave one whole file, 14% of the text, to validation. Upload big text as many small files (about 1 MB each, up to 200 per upload) so the validation share comes out close to what you ask for. `scripts/split_text.py` does the cutting:
+
+```bash
+uv run --project server --no-sync python scripts/split_text.py TinyStoriesV2-GPT4-train.txt stories --size-mb 1
+```

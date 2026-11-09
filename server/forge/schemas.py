@@ -683,6 +683,7 @@ class EstimateRequest(BaseModel):
     shape: ShapeIn | None = None
     train_tokens: int = Field(ge=1)
     sequences_per_step: int = Field(default=4, ge=1, le=256)
+    budget_hours: float | None = Field(default=None, gt=0, le=10_000)
 
 
 class EstimateOut(BaseModel):
@@ -697,6 +698,7 @@ class EstimateOut(BaseModel):
     free_bytes: int | None
     fits: bool | None
     suggestion: str | None
+    budget_tokens: int | None = None
 
 
 class BenchmarkInfo(BaseModel):

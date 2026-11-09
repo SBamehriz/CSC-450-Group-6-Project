@@ -119,6 +119,23 @@ it('says the hours come from a speed test on this computer', async () => {
   expect(screen.getByText(/3.0 GB is free on the graphics card right now. It fits./)).toBeTruthy();
 });
 
+it('turns the hours you have into a word piece budget', async () => {
+  vi.mocked(api.estimate).mockResolvedValue(estimate({ budget_tokens: 59_000_000 }));
+  open(<ComputerPage />);
+  const hours = await screen.findByLabelText('Hours you have');
+  fireEvent.change(hours, { target: { value: '0.5' } });
+  await waitFor(() =>
+    expect(vi.mocked(api.estimate)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ budget_hours: 0.5 }),
+    ),
+  );
+  expect(
+    await screen.findByText(
+      /In the hours you have it can train about 59M word pieces, 20.0 per parameter/,
+    ),
+  ).toBeTruthy();
+});
+
 it('says when the speed was scaled from another size', async () => {
   vi.mocked(api.estimate).mockResolvedValue(estimate({ speed_source: 'scaled' }));
   open(<ComputerPage />);

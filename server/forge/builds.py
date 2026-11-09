@@ -4,6 +4,7 @@ import subprocess
 import sys
 import uuid
 from array import array
+from collections.abc import Iterator
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -21,13 +22,76 @@ MIN_VAL_TOKENS = 100_000
 SPLITS = ("train", "validation")
 
 
-def _snapshot(dataset_id: uuid.UUID | None) -> tuple[Dataset, dict[str, list[dict]]]:
-    with Session(get_engine()) as session:
-        dataset = session.get(Dataset, dataset_id) if dataset_id else None
-        if dataset is None:
-            raise ValueError("The snapshot was removed. Choose another snapshot.")
-        _manifest, splits = read_snapshot(dataset)
-        return dataset, splits
+# text goes to the vocabulary trainer and the tokenizer in pieces this size:
+# a 45 MB file in one go took over 5 GB of memory, in pieces it takes under 1 GB
+PIECE_CHARS = 100_000
+
+
+class Snapshot:
+    """A snapshot read one document at a time, each checked as it is read."""
+
+    def __init__(self, dataset_id: uuid.UUID | None) -> None:
+        with Session(get_engine()) as session:
+            dataset = session.get(Dataset, dataset_id) if dataset_id else None
+            if dataset is None:
+                raise ValueError("The snapshot was removed. Choose another snapshot.")
+            session.expunge(dataset)
+        self.dataset = dataset
+        archive = get_settings().data_dir / "datasets" / f"{dataset.id}.zip"
+        expected = dataset.config.get("sha256")
+        if archive.is_file() and expected and _file_hash(archive) != expected:
+            raise ValueError("The snapshot is missing or its checksum changed. Build a new one.")
+        folder = get_settings().data_dir / "datasets" / str(dataset.id)
+        self.folder = folder if (folder / "manifest.json").is_file() else None
+        self.splits: dict[str, list[dict]] | None = None
+        if self.folder is None:
+            _manifest, self.splits = read_snapshot(dataset)
+            self.counts = {split: len(rows) for split, rows in self.splits.items()}
+            return
+        manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+        if manifest.get("format") != "forge-text-snapshot-v1" or manifest.get("dataset_id") != str(
+            dataset.id
+        ):
+            raise ValueError("The snapshot manifest does not match this dataset.")
+        for split in SPLITS:
+            if _file_hash(folder / f"{split}.jsonl") != manifest["files"][f"{split}.jsonl"]:
+                raise ValueError("A text file inside the snapshot has changed.")
+        documents = manifest.get("documents", [])
+        self.counts = {
+            split: sum(1 for row in documents if row.get("split") == split) for split in SPLITS
+        }
+
+    def rows(self, split: str) -> Iterator[dict]:
+        if self.splits is not None:
+            yield from self.splits[split]
+            return
+        assert self.folder is not None
+        seen = 0
+        with (self.folder / f"{split}.jsonl").open(encoding="utf-8") as source:
+            for line in source:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                digest = hashlib.sha256(record["text"].encode("utf-8")).hexdigest()
+                if digest != record["content_hash"]:
+                    raise ValueError("A document inside the snapshot has changed.")
+                seen += 1
+                yield record
+        if not seen:
+            raise ValueError("Each split needs at least one document.")
+
+
+def pieces(text: str, size: int = PIECE_CHARS) -> Iterator[str]:
+    """Cut text into pieces of about `size` characters, at line ends where there is one."""
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + size)
+        if end < len(text):
+            cut = text.rfind("\n", start, end)
+            if cut > start:
+                end = cut + 1
+        yield text[start:end]
+        start = end
 
 
 def _file_hash(path: Path) -> str:
@@ -50,15 +114,18 @@ def train_tokenizer(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) 
         target = session.get(Tokenizer, target_id)
         assert target is not None
         dataset_id, vocab_size = target.dataset_id, target.requested_vocab_size
-    dataset, splits = _snapshot(dataset_id)
+    snapshot = Snapshot(dataset_id)
+    dataset = snapshot.dataset
     # Only training files teach the vocabulary.
-    documents = splits["train"]
+    total = snapshot.counts["train"]
+    hashes: list[str] = []
 
     def texts():
-        for index, document in enumerate(documents):
-            report(job_id, index, len(documents), "Reading training text")
-            yield document["text"]
-        report(job_id, len(documents), len(documents), "Learning word pieces")
+        for index, document in enumerate(snapshot.rows("train")):
+            report(job_id, index, total, "Reading training text")
+            hashes.append(document["content_hash"])
+            yield from pieces(document["text"])
+        report(job_id, total, total, "Learning word pieces")
 
     tokenizer = BpeTokenizer(models.BPE())
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
@@ -69,8 +136,8 @@ def train_tokenizer(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) 
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
     )
-    tokenizer.train_from_iterator(texts(), trainer=trainer, length=len(documents))
-    report(job_id, len(documents), len(documents), "Saving vocabulary")
+    tokenizer.train_from_iterator(texts(), trainer=trainer)
+    report(job_id, total, total, "Saving vocabulary")
     if tokenizer.token_to_id("<|eos|>") != 0:
         raise ValueError("The vocabulary did not reserve token 0 for document boundaries.")
     _json_file(destination / "tokenizer.json", json.loads(tokenizer.to_str()))
@@ -79,8 +146,8 @@ def train_tokenizer(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) 
         "trained_on": {
             "split": "train",
             "snapshot_sha256": dataset.config.get("sha256"),
-            "documents": len(documents),
-            "hashes": [document["content_hash"] for document in documents],
+            "documents": len(hashes),
+            "hashes": hashes,
         },
     }
 
@@ -101,8 +168,9 @@ def build_dataset(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) ->
         tokenizer_path = get_settings().data_dir / tokenizer_row.artifact_uri
         dataset_id, tokenizer_id = build.dataset_id, build.tokenizer_id
     tokenizer = BpeTokenizer.from_file(str(tokenizer_path))
-    dataset, splits = _snapshot(dataset_id)
-    total_docs = sum(len(rows) for rows in splits.values())
+    snapshot = Snapshot(dataset_id)
+    dataset = snapshot.dataset
+    total_docs = sum(snapshot.counts.values())
     completed = total_tokens = 0
     stats, manifest_splits = {}, {}
     for split in SPLITS:
@@ -110,10 +178,15 @@ def build_dataset(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) ->
         entries = []
         path = destination / f"{split}.bin"
         path.touch()
-        for document in splits[split]:
+        for document in snapshot.rows(split):
             report(job_id, completed, total_docs, f"Turning {split} text into tokens")
             source = document["text"]
-            ids = tokenizer.encode(source).ids + [0]
+            ids = [
+                token
+                for encoded in tokenizer.encode_batch(list(pieces(source)))
+                for token in encoded.ids
+            ]
+            ids.append(0)
             total_tokens += len(ids)
             if total_tokens > MAX_BUILD_TOKENS or (counts.tokens + len(ids)) * 2 > MAX_SPLIT_BYTES:
                 raise ValueError("This training set is too large. Use a smaller snapshot.")

@@ -34,6 +34,12 @@ export function timeWords(estimate: Estimate): string | null {
   return `About ${duration(estimate.hours * 3600)} to train ${compactNumber(estimate.train_tokens)} word pieces${pace}.`;
 }
 
+export function budgetWords(estimate: Estimate): string | null {
+  if (estimate.budget_tokens === null || estimate.budget_tokens === undefined) return null;
+  const perParameter = estimate.budget_tokens / estimate.parameters;
+  return `In the hours you have it can train about ${compactNumber(estimate.budget_tokens)} word pieces, ${perParameter.toFixed(1)} per parameter. About 20 per parameter is the usual target for a model to be well trained.`;
+}
+
 export function memoryWords(estimate: Estimate): string {
   const needed = gigabytes(estimate.memory_bytes);
   if (estimate.fits === null || estimate.free_bytes === null) {

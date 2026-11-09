@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from forge import jobs
+from forge.builds import Snapshot
 from forge.config import get_settings
 from forge.datasets import _load_one
 from forge.db import get_session
@@ -29,7 +30,6 @@ from forge.schemas import (
     TokenPreview,
     TokenPreviewCreate,
 )
-from forge.snapshots import read_snapshot
 
 router = APIRouter(tags=["jobs"])
 
@@ -110,7 +110,10 @@ def _start(session: Session, job: Job) -> None:
 
 def _snapshot_ready(session: Session, dataset_id: uuid.UUID):
     dataset = _load_one(session, dataset_id)
-    read_snapshot(dataset)
+    try:
+        Snapshot(dataset.id)
+    except ValueError as problem:
+        raise ApiError(409, "invalid_snapshot", str(problem)) from problem
     return dataset
 
 

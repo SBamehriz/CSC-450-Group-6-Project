@@ -18,6 +18,10 @@ dependencies = [
     "filelock>=3.13,<4",
 ]
 
+[project.scripts]
+# train from a terminal: forge info, forge train, forge sweep, ...
+forge = "forge.cli:main"
+
 [project.optional-dependencies]
 prepare = [
     "tokenizers>=0.20,<0.24",

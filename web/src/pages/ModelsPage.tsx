@@ -822,7 +822,9 @@ export default function ModelsPage() {
                                 Score:{' '}
                               </span>
                               <strong className="mono" style={{ fontSize: '1.05em' }}>
-                                {r.score !== null ? r.score.toFixed(4) : '—'}
+                                {r.score !== null && r.score !== undefined
+                                  ? r.score.toFixed(4)
+                                  : 'None'}
                               </strong>
                             </div>
                           </div>
@@ -843,12 +845,14 @@ export default function ModelsPage() {
                                 {r.bpb !== null ? r.bpb.toFixed(4) : '—'}
                               </strong>
                             </div>
-                            {r.val_loss !== null ? (
+                            {r.total_nll !== null && r.scored_tokens ? (
                               <div>
                                 <span className="muted" style={{ fontSize: '0.85em' }}>
                                   Val loss (nats):{' '}
                                 </span>
-                                <span className="mono">{r.val_loss.toFixed(4)}</span>
+                                <span className="mono">
+                                  {(r.total_nll / r.scored_tokens).toFixed(4)}
+                                </span>
                               </div>
                             ) : null}
                           </div>

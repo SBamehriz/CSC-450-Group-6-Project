@@ -25,7 +25,8 @@ server/forge/train/
     (export.py).
 
 server/forge/
-    Besides the API routers: hub.py imports open models, harness.py runs
+    Besides the API routers: cli.py is the forge command for training from a
+    terminal, hub.py imports open models, harness.py runs
     benchmarks, prompts.py asks two models the same prompts, measuring.py
     loads any model for those two.
 

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { api, type EstimateRequest, type Preset, type Shape } from '../api/client';
 import { compactNumber } from '../lib/format';
-import { memoryWords, speedWords, timeWords } from '../lib/measure';
+import { budgetWords, memoryWords, speedWords, timeWords } from '../lib/measure';
 import { Notice } from './ui';
 
 export type Size = { preset: string } | { shape: Shape };
@@ -131,6 +131,7 @@ export default function EstimateBox({ ask }: { ask: EstimateRequest | null }) {
         {speedWords(data)}
       </p>
       <p style={{ margin: 0 }}>{memoryWords(data)}</p>
+      {budgetWords(data) ? <p style={{ margin: 0 }}>{budgetWords(data)}</p> : null}
       {data.fits === false && data.suggestion ? (
         <Notice tone="warn">{data.suggestion}</Notice>
       ) : null}

@@ -21,6 +21,8 @@ router = APIRouter(tags=["measuring"])
 
 # leave a little room on the card, as training does when it picks a batch
 USABLE_SHARE = 0.9
+# validation checks and save points take time too
+BUDGET_SHARE = 0.9
 PASS_SIZES = (64, 32, 16, 8, 4, 2, 1)
 
 
@@ -136,4 +138,7 @@ def estimate(payload: EstimateRequest, session: Session = Depends(get_session)) 
         free_bytes=free,
         fits=fits,
         suggestion=suggestion,
+        budget_tokens=int(speed * payload.budget_hours * 3600 * BUDGET_SHARE)
+        if speed and payload.budget_hours
+        else None,
     )

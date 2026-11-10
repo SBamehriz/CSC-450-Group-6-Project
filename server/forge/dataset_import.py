@@ -662,32 +662,37 @@ def _import_from_parquet(
             say(f"Downloading data file {index + 1} of {len(urls)}")
             path = folder / f"{index:05d}.parquet"
             download(url, path)
-            data = pq.ParquetFile(path)
-            if text_column not in data.schema_arrow.names:
-                raise RuntimeError(f"Column '{text_column}' is not in the dataset's data files.")
-            for batch in data.iter_batches(batch_size=10_000, columns=[text_column]):
-                for value in batch.column(0).to_pylist():
+            with path.open("rb") as handle:
+                data = pq.ParquetFile(handle)
+                if text_column not in data.schema_arrow.names:
+                    raise RuntimeError(
+                        f"Column '{text_column}' is not in the dataset's data files."
+                    )
+                for batch in data.iter_batches(batch_size=10_000, columns=[text_column]):
+                    for value in batch.column(0).to_pylist():
+                        if counts["processed"] >= limit:
+                            break
+                        counts["processed"] += 1
+                        if not isinstance(value, str):
+                            counts["failed" if value is not None else "skipped"] += 1
+                            continue
+                        text = value.strip()
+                        # the same row twice in one import is kept once
+                        digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
+                        if not text or digest in seen:
+                            counts["skipped"] += 1
+                            continue
+                        seen.add(digest)
+                        pack.append(text)
+                        if len(pack) >= rows_per_file:
+                            write_pack()
+                    say(
+                        f"{counts['processed']:,} / {total:,} records ({counts['imported']:,} "
+                        f"imported in {parts:,} files, {counts['skipped']:,} skipped, "
+                        f"{counts['failed']:,} failed)"
+                    )
                     if counts["processed"] >= limit:
                         break
-                    counts["processed"] += 1
-                    if not isinstance(value, str):
-                        counts["failed" if value is not None else "skipped"] += 1
-                        continue
-                    text = value.strip()
-                    # the same row twice in one import is kept once
-                    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
-                    if not text or digest in seen:
-                        counts["skipped"] += 1
-                        continue
-                    seen.add(digest)
-                    pack.append(text)
-                    if len(pack) >= rows_per_file:
-                        write_pack()
-                say(
-                    f"{counts['processed']:,} / {total:,} records ({counts['imported']:,} "
-                    f"imported in {parts:,} files, {counts['skipped']:,} skipped, "
-                    f"{counts['failed']:,} failed)"
-                )
             path.unlink(missing_ok=True)
         write_pack()
     finally:

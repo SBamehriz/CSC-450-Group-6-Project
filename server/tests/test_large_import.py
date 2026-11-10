@@ -137,3 +137,27 @@ def test_cancelled_big_import_leaves_no_download_behind(client, db, data_dir, mo
     _, job = start(client, ROWS)
     assert job["status"] == "cancelled", job
     assert not (data_dir / "imports" / job["id"]).exists()
+
+def test_each_data_file_is_closed_before_it_is_deleted(client, monkeypatch):
+    import os
+    from pathlib import Path
+
+    real_unlink = Path.unlink
+    still_open = []
+
+    def careful_unlink(self, missing_ok=False):
+        if self.suffix == ".parquet":
+            for fd in os.listdir("/proc/self/fd"):
+                try:
+                    if os.readlink(f"/proc/self/fd/{fd}") == str(self):
+                        still_open.append(self.name)
+                except OSError:
+                    pass
+        real_unlink(self, missing_ok=missing_ok)
+
+    if not Path("/proc/self/fd").is_dir():
+        pytest.skip("needs /proc to see open files")
+    monkeypatch.setattr(Path, "unlink", careful_unlink)
+    _, job = start(client, ROWS)
+    assert job["status"] == "completed", job
+    assert still_open == []

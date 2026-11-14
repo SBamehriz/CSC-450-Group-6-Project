@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from forge.config import get_settings
+from forge.dataset_import import kind_problem
 from forge.db import get_session
 from forge.errors import ApiError
 from forge.ingest import (
@@ -14,6 +15,7 @@ from forge.ingest import (
     clean,
     is_binary_format,
     looks_mis_decoded,
+    normalise,
     parse,
     split_extension,
 )
@@ -146,8 +148,13 @@ def _ingest_one(
     source_note: str,
     content_type: str | None = None,
 ) -> list[UploadOutcome]:
+    bucket = _require_bucket(session, bucket_id)
     try:
         pieces = parse(name, raw)
+        kind = pieces[0].kind
+        clash = kind_problem(session, bucket, kind)
+        if clash:
+            raise ParseError(clash)
     except ParseError as problem:
         document = Document(
             bucket_id=bucket_id,
@@ -168,13 +175,21 @@ def _ingest_one(
     outcomes: list[UploadOutcome] = []
 
     for piece in pieces:
+        if piece.error:
+            said = f"Not used: {piece.error}."
+            outcomes.append(UploadOutcome(filename=piece.filename, status="failed", error=said))
+            continue
         piece_fmt = _stored_format(piece.filename, content_type=content_type)
         piece_is_binary = (
             piece_fmt in ("pdf", "docx", "image")
             or is_binary_format(name, content_type=content_type)
             or is_binary_format(piece.filename)
         )
-        cleaned = clean(piece.text, encoding_suspect=False if piece_is_binary else suspect)
+        if kind == "chat":
+            # like the import: light tidying only, so the marks stay as they are
+            cleaned = clean(normalise(piece.text), mode="none")
+        else:
+            cleaned = clean(piece.text, encoding_suspect=False if piece_is_binary else suspect)
 
         fmt = piece_fmt
         if fmt == "other":
@@ -223,6 +238,7 @@ def _ingest_one(
         session.add(document)
         session.flush()  # need the id for the text path
         document.text_uri = _write(f"text/{document.id}.txt", cleaned.text.encode("utf-8"))
+        bucket.kind = kind
         outcomes.append(
             UploadOutcome(filename=piece.filename, status="parsed", document_id=document.id)
         )

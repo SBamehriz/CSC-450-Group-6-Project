@@ -86,29 +86,34 @@ def test_upgrade_from_previous_migration_preserves_existing_data(tmp_path: Path)
     doc_id = uuid.uuid4()
     now = datetime.now(UTC)
 
-    with Session(engine1) as s1:
-        bucket = Bucket(
-            id=bucket_id,
-            name="legacy-bucket",
-            description="Bucket created in revision 0001",
-            created_at=now,
+    old = MetaData()
+    old.reflect(engine1)
+    with engine1.begin() as conn:
+        conn.execute(
+            old.tables["buckets"].insert(),
+            {
+                "id": bucket_id.hex,
+                "name": "legacy-bucket",
+                "description": "Bucket created in revision 0001",
+                "created_at": now,
+            },
         )
-        doc = Document(
-            id=doc_id,
-            bucket_id=bucket_id,
-            filename="legacy_doc.txt",
-            source_format="txt",
-            source_note="Legacy document",
-            raw_uri="raw/legacy.txt",
-            status="parsed",
-            char_count=120,
-            word_count=25,
-            quality={},
-            created_at=now,
+        conn.execute(
+            old.tables["documents"].insert(),
+            {
+                "id": doc_id.hex,
+                "bucket_id": bucket_id.hex,
+                "filename": "legacy_doc.txt",
+                "source_format": "txt",
+                "source_note": "Legacy document",
+                "raw_uri": "raw/legacy.txt",
+                "status": "parsed",
+                "char_count": 120,
+                "word_count": 25,
+                "quality": {},
+                "created_at": now,
+            },
         )
-        s1.add(bucket)
-        s1.add(doc)
-        s1.commit()
     engine1.dispose()
 
     # 2. Upgrade from revision 0001 to head (revision 0002)

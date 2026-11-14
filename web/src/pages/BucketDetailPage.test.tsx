@@ -40,9 +40,10 @@ it('opens an activity link independently of the first document page', async () =
   expect(screen.getByText('OCR used').nextElementSibling?.textContent).toBe('No');
   expect(await screen.findByText('Cleaned words.')).toBeTruthy();
   expect(api.getDocument).toHaveBeenCalledWith('doc-1');
-  expect(
-    screen.getByRole('link', { name: 'Create a snapshot from this bucket →' }).getAttribute('href'),
-  ).toBe('/datasets?bucket=bucket-1');
+  expect(screen.getByRole('link', { name: 'Train on this →' }).getAttribute('href')).toBe(
+    '/train?data=bucket-1',
+  );
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Sourcestext');
 });
 
 it('shows failed document details without requesting text', async () => {
@@ -114,6 +115,27 @@ it('returns to the first document page after an upload', async () => {
   );
 });
 
+it('says how to upload conversations and lists the problems first', async () => {
+  vi.spyOn(api, 'uploadDocuments').mockResolvedValue({
+    parsed: 1,
+    failed: 1,
+    outcomes: [
+      { filename: 'msu.jsonl#L1', status: 'parsed', document_id: 'doc-1', error: null },
+      { filename: 'msu.jsonl#L2', status: 'failed', document_id: null, error: 'Not used.' },
+    ],
+  });
+  visit();
+  expect(await screen.findByText(/a \.jsonl file with a "messages" list/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Files to upload'), {
+    target: { files: [new File(['{}'], 'msu.jsonl')] },
+  });
+  expect(await screen.findByText('1 parsed, 1 failed')).toBeTruthy();
+  const lines = screen.getAllByRole('listitem').map((line) => line.textContent);
+  expect(lines.indexOf('msu.jsonl#L2: Not used.')).toBeLessThan(
+    lines.indexOf('msu.jsonl#L1: Parsed'),
+  );
+});
+
 it('records a typed rejection reason', async () => {
   const reject = vi
     .spyOn(api, 'rejectDocument')
@@ -176,5 +198,5 @@ it('keeps counted zeroes visible and explains a quality flag', async () => {
   expect(await screen.findByText('There may be too little text here to be useful.')).toBeTruthy();
   expect(screen.getAllByRole('cell', { name: '0' })).toHaveLength(2);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Explain what I’m seeing' }));
-  expect(screen.getByText(/A snapshot includes every parsed file/)).toBeTruthy();
+  expect(screen.getByText(/Training uses every parsed file/)).toBeTruthy();
 });

@@ -104,7 +104,7 @@ export default function RunDetailPage() {
   return (
     <>
       <p>
-        <Link to="/history">Back to training history</Link>
+        <Link to="/train">Back to training history</Link>
       </p>
 
       <div className="page-intro">
@@ -121,11 +121,25 @@ export default function RunDetailPage() {
               {stopping ? 'Stopping…' : ACTION_LABEL[action]}
             </button>
           ) : null}
+          {r.status === 'completed' ? (
+            <span className="actions">
+              <Link className="btn btn-sm" to={`/chat?model=${r.model_id}`}>
+                Chat with it
+              </Link>
+              <Link className="btn btn-sm" to={`/train?from=${r.model_id}`}>
+                Fine-tune it
+              </Link>
+              <Link className="btn btn-sm" to={`/compare?model=${r.model_id}`}>
+                Compare it
+              </Link>
+            </span>
+          ) : null}
         </div>
         <p className="lede">
           {r.model_name ?? 'Model'} on {r.build_name ?? r.dataset_name ?? 'no training set'}.
           Created {relativeDate(r.created_at)}
           {r.started_at ? `, started ${relativeDate(r.started_at)}` : ''}.
+          {r.fine_tune ? ` Fine-tuned from ${r.base_model_name ?? 'another model'}.` : null}
         </p>
       </div>
 
@@ -135,6 +149,11 @@ export default function RunDetailPage() {
       <Card>
         <CardHead title="Progress" />
         <div className="card-body stack">
+          {r.stage === 'waiting' || r.stage === 'preparing' ? (
+            <p className="muted" role="status">
+              {r.stage_message || 'Forge is getting the text ready first.'}
+            </p>
+          ) : null}
           <dl className="run-numbers">
             <div>
               <dt>Step</dt>

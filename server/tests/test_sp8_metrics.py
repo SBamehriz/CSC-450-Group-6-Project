@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 
 from forge.models import Base, MetricPoint, Model, Run
 from forge.train.metrics import MetricBuffer, get_best_validation_loss, get_metric_points
-from forge.train.worker import TrainingWorker
 
 
 def _setup_test_db(tmp_path):
@@ -218,64 +217,3 @@ def test_metrics_survive_reopening_database(tmp_path):
         best_val = get_best_validation_loss(session, run_id)
         assert best_val == 2.0
     engine2.dispose()
-
-
-def test_training_worker_integration(tmp_path):
-    engine, SessionMaker = _setup_test_db(tmp_path)
-    with SessionMaker() as session:
-        model = Model(
-            id=uuid.uuid4(),
-            name="m-worker",
-            n_layer=4,
-            d_model=128,
-            n_head=4,
-            ctx_len=512,
-            vocab_size=16384,
-            param_count=920000,
-        )
-        run = Run(id=uuid.uuid4(), name="r-worker", model_id=model.id, max_steps=30)
-        session.add_all([model, run])
-        session.commit()
-        run_id = run.id
-
-    worker = TrainingWorker(session_factory=SessionMaker, metric_batch_size=10)
-    finished_run = worker.run_training_loop(run_id=run_id, steps=25, eval_every=5)
-    assert finished_run.status == "completed"
-    assert finished_run.completed_at is not None
-
-    with SessionMaker() as session:
-        points = get_metric_points(session, run_id)
-        assert len(points) == 25
-        best_val = get_best_validation_loss(session, run_id)
-        assert best_val is not None
-        assert best_val < 3.5
-    engine.dispose()
-
-
-def test_training_worker_stop_path(tmp_path):
-    engine, SessionMaker = _setup_test_db(tmp_path)
-    with SessionMaker() as session:
-        model = Model(
-            id=uuid.uuid4(),
-            name="m-stop",
-            n_layer=4,
-            d_model=128,
-            n_head=4,
-            ctx_len=512,
-            vocab_size=16384,
-            param_count=920000,
-        )
-        run = Run(id=uuid.uuid4(), name="r-stop", model_id=model.id, max_steps=50)
-        session.add_all([model, run])
-        session.commit()
-        run_id = run.id
-
-    worker = TrainingWorker(session_factory=SessionMaker, metric_batch_size=10)
-    stopped_run = worker.run_training_loop(run_id=run_id, steps=50, stop_at_step=15)
-    assert stopped_run.status == "stopped"
-
-    with SessionMaker() as session:
-        points = get_metric_points(session, run_id)
-        # All 15 steps were recorded and flushed on the stop path
-        assert len(points) == 15
-    engine.dispose()

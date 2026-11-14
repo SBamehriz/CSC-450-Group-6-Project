@@ -315,19 +315,11 @@ def create_sample_pdf(out_path: Path):
     print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
 
 
-def create_scanned_sample_pdf(out_path: Path):
-    # Minimal scan-like PDF (low character density to trigger OCR fallback)
-    pdf_bytes = _make_pdf(["12"])
-    out_path.write_bytes(pdf_bytes)
-    print(f"Created {out_path} ({out_path.stat().st_size} bytes)")
-
-
 def main():
     create_sample_docx(FIXTURES_DIR / "sample.docx")
     create_sample_png(FIXTURES_DIR / "sample.png")
     create_sample_jpg(FIXTURES_DIR / "sample.jpg")
     create_sample_pdf(FIXTURES_DIR / "sample.pdf")
-    create_scanned_sample_pdf(FIXTURES_DIR / "scanned_sample.pdf")
     print("All fixtures generated successfully.")
 
 

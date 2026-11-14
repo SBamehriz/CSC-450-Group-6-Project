@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from forge.converter import convert_bytes_with_metadata, convert_file
+from forge.converter import convert_bytes_with_metadata
 from forge.ingest import (
     ParseError,
     parse_image_with_metadata,
@@ -277,22 +277,18 @@ def test_ocr_engine_availability_and_name():
 
 
 @requires_ocr
-def test_ocr_valid_png_with_readable_text(tmp_path: Path):
+def test_ocr_valid_png_with_readable_text():
     """Verify readable PNG image extracts expected terms and consistent metadata."""
     png_bytes = _make_text_image("Invoice Summary Total 2026", size=(320, 100), fmt="PNG")
-    png_file = tmp_path / "invoice_summary.png"
-    png_file.write_bytes(png_bytes)
 
     # 1. Direct ocr_document dispatcher
     dispatcher_text = ocr_document(png_bytes, filename="invoice_summary.png")
     assert any(term in dispatcher_text for term in ("Invoice", "Summary", "Total", "2026"))
 
-    # 2. File conversion with extraction metadata
-    record = convert_file(png_file, include_metadata=True)
-    assert record["filename"] == "invoice_summary.png"
-    assert any(term in record["text"] for term in ("Invoice", "Summary", "Total", "2026"))
+    # 2. Byte conversion with metadata
+    text, meta = convert_bytes_with_metadata("invoice_summary.png", png_bytes)
+    assert any(term in text for term in ("Invoice", "Summary", "Total", "2026"))
 
-    meta = record["metadata"]
     assert meta["source_format"] == "png"
     assert meta["ocr_applied"] is True
     assert meta["engine"] == get_ocr_engine_name()

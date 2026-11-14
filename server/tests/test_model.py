@@ -10,15 +10,14 @@ torch = pytest.importorskip("torch", reason="torch is an optional extra: uv sync
 from forge.train.model import GPT  # noqa: E402
 
 TINY = presets.ModelConfig(n_layer=2, d_model=32, n_head=4, ctx_len=16, vocab_size=64)
-
-
-def test_presets_are_the_sizes_we_advertise():
-    sizes = {name: presets.count_params(cfg) / 1e6 for name, cfg in presets.PRESETS.items()}
-    assert 2.5 < sizes["nano"] < 3.5
-    assert 8.0 < sizes["micro"] < 10.0
-    assert 30.0 < sizes["small"] < 36.0
-    assert 95.0 < sizes["large"] < 100.0
-    assert 130.0 < sizes["135m"] < 136.0
+# the shapes the memory below was measured on
+SIZES = {
+    "nano": presets.ModelConfig(n_layer=4, d_model=128, n_head=4, ctx_len=512),
+    "micro": presets.ModelConfig(n_layer=6, d_model=256, n_head=8, ctx_len=512),
+    "small": presets.ModelConfig(n_layer=8, d_model=512, n_head=8, ctx_len=512),
+    "large": presets.ModelConfig(n_layer=12, d_model=768, n_head=12, ctx_len=512),
+    "135m": presets.ModelConfig(n_layer=17, d_model=768, n_head=12, ctx_len=1024),
+}
 
 
 def test_param_formula_matches_the_real_model():
@@ -26,9 +25,9 @@ def test_param_formula_matches_the_real_model():
     assert model.num_params() == presets.count_params(TINY)
 
 
-@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+@pytest.mark.parametrize("name", sorted(SIZES))
 def test_formula_matches_for_every_preset(name):
-    config = presets.get_preset(name)
+    config = SIZES[name]
     model = GPT(config)
     assert model.num_params() == presets.count_params(config)
 
@@ -144,18 +143,18 @@ def test_bad_config_is_caught_early():
         "that divides by the number of heads."
     )
 
-    nano = presets.get_preset("nano")
+    nano = SIZES["nano"]
     for changed, said in (
         (
             {"ctx_len": 333},
             "This model would read a context of 333 word pieces, and Forge's "
-            "GPT reads 64 to 2,048, in steps of 64.",
+            "GPT reads 64 to 8,192, in steps of 64.",
         ),
-        ({"n_layer": 49}, "This model would have 49 blocks, and Forge's GPT has 1 to 48."),
-        ({"n_layer": 0}, "This model would have 0 blocks, and Forge's GPT has 1 to 48."),
+        ({"n_layer": 129}, "This model would have 129 blocks, and Forge's GPT has 1 to 128."),
+        ({"n_layer": 0}, "This model would have 0 blocks, and Forge's GPT has 1 to 128."),
         (
-            {"d_model": 4096, "n_head": 8},
-            "This model would have a width of 4,096, and Forge's GPT has a width of 1 to 2,048.",
+            {"d_model": 16384, "n_head": 8},
+            "This model would have a width of 16,384, and Forge's GPT has a width of 1 to 8,192.",
         ),
         ({"dropout": 0.5}, "Dropout goes from 0, the default, to 0.2."),
     ):
@@ -163,24 +162,21 @@ def test_bad_config_is_caught_early():
             presets.validate(replace(nano, **changed))
         assert str(problem.value) == said, changed
 
-    with pytest.raises(ValueError, match="unknown preset"):
-        presets.get_preset("enormous")
 
-
-@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+@pytest.mark.parametrize("name", sorted(SIZES))
 def test_every_preset_is_a_valid_shape(name):
-    presets.validate(presets.PRESETS[name])
+    presets.validate(SIZES[name])
 
 
 MEASURED_PEAKS = [
-    (replace(presets.PRESETS["nano"], vocab_size=16384), 16, 1_827_428_864),
-    (replace(presets.PRESETS["micro"], vocab_size=16384), 16, 2_222_380_544),
-    (replace(presets.PRESETS["small"], vocab_size=16384), 16, 3_356_820_992),
+    (replace(SIZES["nano"], vocab_size=16384), 16, 1_827_428_864),
+    (replace(SIZES["micro"], vocab_size=16384), 16, 2_222_380_544),
+    (replace(SIZES["small"], vocab_size=16384), 16, 3_356_820_992),
 ]
 
 
 def test_training_memory_is_its_parts_worked_by_hand():
-    config = replace(presets.PRESETS["nano"], vocab_size=16384)
+    config = replace(SIZES["nano"], vocab_size=16384)
     parts = presets.training_memory(config, micro_batch_seqs=16)
     assert parts == {
         "weights": 16 * 2_956_032,
@@ -210,9 +206,9 @@ def test_the_bytes_a_logit_costs_are_read_off_the_measured_presets():
     assert presets.LOGIT_BYTES == math.ceil(max(left)) == 13
 
 
-@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+@pytest.mark.parametrize("name", sorted(SIZES))
 def test_the_presets_keep_no_attention_scores(name):
-    config = presets.PRESETS[name]
+    config = SIZES[name]
     assert config.head_dim % 8 == 0
     assert presets.training_memory(config, micro_batch_seqs=16)["attention"] == 0
 
@@ -249,7 +245,7 @@ def test_training_memory_covers_what_the_card_reserved(
 
 
 def test_the_135m_size_memory_is_worked_out_in_full():
-    config = presets.PRESETS["135m"]
+    config = SIZES["135m"]
     one = sum(presets.training_memory(config, micro_batch_seqs=1).values())
     eight = sum(presets.training_memory(config, micro_batch_seqs=8).values())
     assert one < eight

@@ -74,7 +74,6 @@ JOB_TYPES = (
 )
 ARTIFACT_STATUSES = ("pending", "building", "ready", "failed", "cancelled")
 RUN_STATUSES = ("pending", "running", "completed", "failed", "stopped")
-MODEL_PRESETS = ("nano", "micro", "small", "large", "135m", "custom")
 EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 BPB_EVALUATION_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 EVAL_RESULT_TYPES = ("prompt", "bpb", "benchmark")
@@ -98,6 +97,8 @@ class Bucket(Base):
     dataset_split: Mapped[str | None] = mapped_column(Text, nullable=True)
     text_column: Mapped[str | None] = mapped_column(Text, nullable=True)
     import_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # "text", or "chat" when it holds conversations
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="text", server_default="text")
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -203,6 +204,10 @@ class Model(Base):
     )
     source: Mapped[str] = mapped_column(Text, nullable=False, default="forge")
     artifact_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # the model this one was fine-tuned from
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    # it has learned to answer in turns
+    chat: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -225,6 +230,8 @@ class Run(Base):
     build_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("dataset_builds.id", ondelete="SET NULL"), nullable=True
     )
+    # fine-tuning starts from this save point
+    init_checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     seed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_seen: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="pending")

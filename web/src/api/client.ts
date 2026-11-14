@@ -8,32 +8,18 @@ export type DocumentPage = components['schemas']['Page_DocumentOut_'];
 export type DocumentText = components['schemas']['DocumentText'];
 export type UploadResult = components['schemas']['UploadResult'];
 export type Dataset = components['schemas']['DatasetOut'];
-export type DatasetCreate = components['schemas']['DatasetCreate'];
 export type OverviewStats = components['schemas']['OverviewStats'];
 export type RecentUpload = components['schemas']['RecentUpload'];
-export type Preset = components['schemas']['PresetOut'];
 export type GpuCheck = components['schemas']['GpuCheck'];
 export type Model = components['schemas']['ModelOut'];
-export type ModelCreate = components['schemas']['ModelCreate'];
-export type ModelPreviewRequest = components['schemas']['ModelPreviewRequest'];
-export type ModelPreviewOut = components['schemas']['ModelPreviewOut'];
-export type ModelPage = components['schemas']['Page_ModelOut_'];
-export type Vocabulary = components['schemas']['VocabularyOut'];
 export type Run = components['schemas']['RunOut'];
-export type RunCreate = components['schemas']['RunCreate'];
 export type RunPage = components['schemas']['Page_RunOut_'];
 export type MetricPoint = components['schemas']['MetricPointOut'];
 export type RunMetrics = components['schemas']['RunMetricsOut'];
-export type TrainSettings = components['schemas']['TrainSettings'];
 export type Checkpoint = components['schemas']['CheckpointOut'];
-export type Tokenizer = components['schemas']['TokenizerOut'];
-export type TokenizerCreate = components['schemas']['TokenizerCreate'];
-export type DatasetBuild = components['schemas']['DatasetBuildOut'];
-export type DatasetBuildCreate = components['schemas']['DatasetBuildCreate'];
 export type Job = components['schemas']['JobOut'];
 export type HfInspectResponse = components['schemas']['HfInspectResponse'];
 export type HfConfigInfo = components['schemas']['HfConfigInfo'];
-export type HfSplitInfo = components['schemas']['HfSplitInfo'];
 export type DatasetImportCreate = components['schemas']['DatasetImportCreate'];
 export type PromptSet = components['schemas']['PromptSetOut'];
 export type PromptSetCreate = components['schemas']['PromptSetCreate'];
@@ -43,21 +29,27 @@ export type EvaluationCreate = components['schemas']['EvaluationCreate'];
 export type BpbEvaluation = components['schemas']['BpbEvaluationOut'];
 export type BpbEvaluationCreate = components['schemas']['BpbEvaluationCreate'];
 export type EvalResult = components['schemas']['EvalResultOut'];
-export type GpuCard = components['schemas']['GpuCard'];
-export type Shape = components['schemas']['ShapeIn'];
 export type SpeedTestCreate = components['schemas']['SpeedTestCreate'];
 export type SpeedTest = components['schemas']['SpeedTestOut'];
-export type EstimateRequest = components['schemas']['EstimateRequest'];
-export type Estimate = components['schemas']['EstimateOut'];
 export type HubImportRequest = components['schemas']['HubImportRequest'];
 export type BenchmarkPlan = components['schemas']['BenchmarkPlanOut'];
 export type BenchmarkCreate = components['schemas']['BenchmarkCreate'];
 export type BenchmarkResult = components['schemas']['BenchmarkResult'];
-export type BenchmarkScore = components['schemas']['BenchmarkScore'];
 export type PromptCompareCreate = components['schemas']['PromptCompareCreate'];
 export type PromptRun = components['schemas']['PromptCompareResult'];
 export type CompareModel = components['schemas']['CompareModel'];
 export type Comparison = components['schemas']['CompareOut'];
+
+export type Plan = components['schemas']['PlanOut'];
+export type PlanRequest = components['schemas']['PlanRequest'];
+export type TrainCreate = components['schemas']['TrainCreate'];
+export type ChatMessage = components['schemas']['ChatMessage'];
+export type ChatRequest = Pick<components['schemas']['ChatRequest'], 'model_id' | 'messages'> &
+  Partial<components['schemas']['ChatRequest']>;
+export type ChatEvent =
+  | { text: string }
+  | { done: true; tokens: number; seconds: number; stopped: 'end' | 'length' }
+  | { error: string };
 
 export const DOCUMENT_PAGE = 50;
 export const RUN_PAGE = 20;
@@ -171,72 +163,11 @@ export const api = {
     }),
   deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' }),
   listDatasets: () => allPages<Dataset>('/datasets'),
-  getDataset: (id: string) => request<Dataset>(`/datasets/${id}`),
-  verifyDataset: (id: string) =>
-    request<components['schemas']['SnapshotCheck']>(`/datasets/${id}/verify`),
-  createDataset: (payload: DatasetCreate) =>
-    request<Dataset>('/datasets', { method: 'POST', body: JSON.stringify(payload) }),
-  deleteDataset: (id: string) => request<void>(`/datasets/${id}`, { method: 'DELETE' }),
-  datasetDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/download`,
-  preparationTools: () => request<components['schemas']['PrepareTools']>('/preparation/tools'),
-  getPrepared: (id: string) =>
-    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepared`),
-  prepareDataset: (id: string, vocabSize: number) =>
-    request<components['schemas']['PreparedOut']>(`/datasets/${id}/prepare`, {
-      method: 'POST',
-      body: JSON.stringify({ vocab_size: vocabSize }),
-    }),
-  deletePrepared: (id: string) => request<void>(`/datasets/${id}/prepared`, { method: 'DELETE' }),
-  previewTokens: (id: string, text: string) =>
-    request<components['schemas']['TokenPreview']>(`/datasets/${id}/prepared/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    }),
-  preparedDownloadUrl: (id: string) => `${API_PREFIX}/datasets/${id}/prepared/download`,
-  listPresets: () => request<Preset[]>('/presets'),
   checkGpu: () => request<GpuCheck>('/gpu'),
 
   // Models
-  listModels: (params?: { offset?: number; limit?: number }) => {
-    const query = new URLSearchParams();
-    if (params?.offset !== undefined) query.set('offset', String(params.offset));
-    if (params?.limit !== undefined) query.set('limit', String(params.limit));
-    const qs = query.toString();
-    return request<ModelPage>(`/models${qs ? `?${qs}` : ''}`);
-  },
   listAllModels: () => allPages<Model>('/models'),
-  getModel: (id: string) => request<Model>(`/models/${id}`),
-  createModel: (payload: ModelCreate) =>
-    request<Model>('/models', { method: 'POST', body: JSON.stringify(payload) }),
   deleteModel: (id: string) => request<void>(`/models/${id}`, { method: 'DELETE' }),
-  previewModel: (payload: ModelPreviewRequest) =>
-    request<ModelPreviewOut>('/models/preview', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  listVocabularies: () => request<Vocabulary[]>('/models/vocabularies'),
-  getModelPresets: () =>
-    request<{
-      presets: Record<
-        string,
-        {
-          n_layer: number;
-          d_model: number;
-          n_head: number;
-          ctx_len: number;
-          vocab_size: number;
-          dropout: number;
-          param_count: number;
-          estimated_memory_bytes: number;
-        }
-      >;
-      limits: {
-        max_n_layer: number;
-        max_d_model: number;
-        allowed_ctx: number[];
-        max_dropout: number;
-      };
-    }>('/models/presets'),
 
   // Runs and Training History
   listRuns: (params?: { status?: string; offset?: number; limit?: number }) => {
@@ -248,8 +179,6 @@ export const api = {
     return request<RunPage>(`/runs${qs ? `?${qs}` : ''}`);
   },
   getRun: (id: string) => request<Run>(`/runs/${id}`),
-  createRun: (payload: RunCreate) =>
-    request<Run>('/runs', { method: 'POST', body: JSON.stringify(payload) }),
   deleteRun: (id: string) => request<void>(`/runs/${id}`, { method: 'DELETE' }),
   changeRun: (id: string, action: 'start' | 'stop' | 'resume') =>
     request<Run>(`/runs/${id}/${action}`, { method: 'POST' }),
@@ -259,29 +188,12 @@ export const api = {
     const qs = limit ? `?limit=${limit}` : '';
     return request<RunMetrics>(`/runs/${id}/metrics${qs}`);
   },
-  listTokenizers: () => allPages<Tokenizer>('/tokenizers'),
-  createTokenizer: (payload: TokenizerCreate) =>
-    request<Tokenizer>('/tokenizers', { method: 'POST', body: JSON.stringify(payload) }),
-  deleteTokenizer: (id: string) => request<void>(`/tokenizers/${id}`, { method: 'DELETE' }),
-  previewTokenizer: (id: string, text: string) =>
-    request<components['schemas']['TokenPreview']>(`/tokenizers/${id}/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    }),
-  tokenizerDownloadUrl: (id: string) => `${API_PREFIX}/tokenizers/${id}/artifact`,
-  listBuilds: () => allPages<DatasetBuild>('/dataset-builds'),
-  createBuild: (payload: DatasetBuildCreate) =>
-    request<DatasetBuild>('/dataset-builds', { method: 'POST', body: JSON.stringify(payload) }),
-  deleteBuild: (id: string) => request<void>(`/dataset-builds/${id}`, { method: 'DELETE' }),
-  buildManifestUrl: (id: string) => `${API_PREFIX}/dataset-builds/${id}/manifest`,
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
 
   // measuring this computer
   startSpeedTest: (payload: SpeedTestCreate) =>
     request<Job>('/speed-tests', { method: 'POST', body: JSON.stringify(payload) }),
   listSpeedTests: () => request<SpeedTest[]>('/speed-tests'),
-  estimate: (payload: EstimateRequest) =>
-    request<Estimate>('/estimate', { method: 'POST', body: JSON.stringify(payload) }),
 
   // models from the hub, and save points out to other tools
   importModel: (payload: HubImportRequest) =>
@@ -316,7 +228,6 @@ export const api = {
 
   // Prompt Sets & Evaluation
   listPromptSets: () => request<PromptSet[]>('/prompt-sets'),
-  getPromptSet: (id: string) => request<PromptSet>(`/prompt-sets/${id}`),
   createPromptSet: (payload: PromptSetCreate) =>
     request<PromptSet>('/prompt-sets', { method: 'POST', body: JSON.stringify(payload) }),
   updatePromptSet: (id: string, payload: PromptSetUpdate) =>
@@ -324,14 +235,12 @@ export const api = {
   deletePromptSet: (id: string) => request<void>(`/prompt-sets/${id}`, { method: 'DELETE' }),
 
   listEvaluations: () => request<Evaluation[]>('/evaluations'),
-  getEvaluation: (id: string) => request<Evaluation>(`/evaluations/${id}`),
   createEvaluation: (payload: EvaluationCreate) =>
     request<Evaluation>('/evaluations', { method: 'POST', body: JSON.stringify(payload) }),
   deleteEvaluation: (id: string) => request<void>(`/evaluations/${id}`, { method: 'DELETE' }),
 
   // Bits Per Byte (BPB) Evaluations
   listBpbEvaluations: () => request<BpbEvaluation[]>('/bpb-evaluations'),
-  getBpbEvaluation: (id: string) => request<BpbEvaluation>(`/bpb-evaluations/${id}`),
   createBpbEvaluation: (payload: BpbEvaluationCreate) =>
     request<BpbEvaluation>('/bpb-evaluations', { method: 'POST', body: JSON.stringify(payload) }),
   deleteBpbEvaluation: (id: string) =>
@@ -347,6 +256,66 @@ export const api = {
     const qs = query.toString();
     return request<EvalResult[]>(`/eval-results${qs ? `?${qs}` : ''}`);
   },
-  getEvalResult: (id: string) => request<EvalResult>(`/eval-results/${id}`),
   deleteEvalResult: (id: string) => request<void>(`/eval-results/${id}`, { method: 'DELETE' }),
+  plan: (payload: PlanRequest) =>
+    request<Plan>('/plan', { method: 'POST', body: JSON.stringify(payload) }),
+  // one call makes the model, gets the text ready and starts training
+  train: (payload: TrainCreate) =>
+    request<Run>('/train', { method: 'POST', body: JSON.stringify(payload) }),
 };
+
+// streams an answer, one event at a time; stopping it just returns
+export async function chatStream(
+  payload: ChatRequest,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_PREFIX}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) return;
+    throw error;
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? 'unknown',
+      body?.error?.message ?? `Request failed with status ${response.status}.`,
+    );
+  }
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = (block: string) => {
+    for (const line of block.split('\n')) {
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data) onEvent(JSON.parse(data) as ChatEvent);
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+      let end = buffer.indexOf('\n\n');
+      while (end !== -1) {
+        flush(buffer.slice(0, end));
+        buffer = buffer.slice(end + 2);
+        end = buffer.indexOf('\n\n');
+      }
+    }
+    flush(buffer + decoder.decode());
+  } catch (error) {
+    if (signal?.aborted) return;
+    throw error;
+  }
+}

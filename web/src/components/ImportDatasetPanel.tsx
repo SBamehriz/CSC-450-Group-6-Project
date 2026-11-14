@@ -1,9 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
-import { api, type HfInspectResponse, type Job } from '../api/client';
-import { tones } from './JobsPanel';
-import { Card, CardHead, Chip, Notice } from './ui';
+import { api, type HfConfigInfo, type HfInspectResponse, type Job } from '../api/client';
+import { Card, CardHead, Chip, Notice, type Tone } from './ui';
+
+const tones: Record<string, Tone> = {
+  completed: 'ok',
+  failed: 'bad',
+  cancelled: 'warn',
+  pending: 'idle',
+  running: 'idle',
+};
+
+// text first, then conversations
+function firstColumn(cfg: HfConfigInfo): string {
+  return cfg.text_columns[0] ?? cfg.chat_columns?.[0] ?? cfg.columns[0] ?? '';
+}
 
 interface ImportDatasetPanelProps {
   bucketId: string;
@@ -50,6 +62,7 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
   const [selectedSplit, setSelectedSplit] = useState('');
   const [selectedTextColumn, setSelectedTextColumn] = useState('');
   const [importLimit, setImportLimit] = useState(500);
+  const [wholeSplit, setWholeSplit] = useState(true);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
 
   // Poll background jobs to track active or recent import jobs for this collection
@@ -100,11 +113,7 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
         if (firstConfig.splits.length > 0) {
           setSelectedSplit(firstConfig.splits[0].name);
         }
-        if (firstConfig.text_columns.length > 0) {
-          setSelectedTextColumn(firstConfig.text_columns[0]);
-        } else if (firstConfig.columns.length > 0) {
-          setSelectedTextColumn(firstConfig.columns[0]);
-        }
+        setSelectedTextColumn(firstColumn(firstConfig));
       }
     },
   });
@@ -116,7 +125,7 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
       config: string;
       split: string;
       text_column: string;
-      limit: number;
+      limit?: number;
     }) => api.importDataset(bucketId, params),
     onSuccess: (job) => {
       setTrackedJobId(job.id);
@@ -153,11 +162,7 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
     const cfg = inspected?.configs.find((c) => c.name === cfgName);
     if (cfg) {
       if (cfg.splits.length > 0) setSelectedSplit(cfg.splits[0].name);
-      if (cfg.text_columns.length > 0) {
-        setSelectedTextColumn(cfg.text_columns[0]);
-      } else if (cfg.columns.length > 0) {
-        setSelectedTextColumn(cfg.columns[0]);
-      }
+      setSelectedTextColumn(firstColumn(cfg));
     }
   };
 
@@ -169,9 +174,17 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
       config: selectedConfig,
       split: selectedSplit,
       text_column: selectedTextColumn,
-      limit: importLimit,
+      // no limit is the whole split
+      ...(wholeSplit ? {} : { limit: importLimit }),
     });
   };
+  const rows = wholeSplit ? (splitRows ?? 0) : importLimit;
+  const textColumns = currentConfigObj?.text_columns ?? [];
+  const chatColumns = currentConfigObj?.chat_columns ?? [];
+  const columnChoices =
+    textColumns.length || chatColumns.length
+      ? [...textColumns, ...chatColumns]
+      : (currentConfigObj?.columns ?? []);
 
   const isImportRunning =
     latestImportJob && ['pending', 'running'].includes(latestImportJob.status);
@@ -283,45 +296,58 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
                   disabled={importMutation.isPending || isImportRunning}
                   onChange={(event) => setSelectedTextColumn(event.target.value)}
                 >
-                  {currentConfigObj?.columns.map((col) => (
+                  {columnChoices.map((col) => (
                     <option key={col} value={col}>
                       {col}
-                      {currentConfigObj.text_columns.includes(col) ? ' (text)' : ''}
+                      {chatColumns.includes(col) ? ' (conversations)' : ''}
                     </option>
                   ))}
                 </select>
               </label>
 
-              <label className="field">
-                <span className="label">Rows to import</span>
-                <input
-                  type="number"
-                  className="input"
-                  min={1}
-                  max={MAX_ROWS}
-                  value={importLimit}
-                  disabled={importMutation.isPending || isImportRunning}
-                  onChange={(event) => {
-                    const val = Number.parseInt(event.target.value, 10);
-                    setImportLimit(Number.isNaN(val) ? 1 : Math.max(1, Math.min(MAX_ROWS, val)));
-                  }}
-                />
-              </label>
-              {splitRows ? (
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  disabled={importMutation.isPending || isImportRunning}
-                  onClick={() => setImportLimit(Math.min(MAX_ROWS, splitRows))}
-                >
-                  All {splitRows.toLocaleString()} rows
-                </button>
-              ) : null}
-              {importLimit > MOST_FILES ? (
+              <fieldset className="field" style={{ border: 0, margin: 0, padding: 0 }}>
+                <legend className="label">Rows to import</legend>
+                <label className="help-toggle">
+                  <input
+                    type="radio"
+                    name="rows"
+                    checked={wholeSplit}
+                    disabled={importMutation.isPending || isImportRunning}
+                    onChange={() => setWholeSplit(true)}
+                  />
+                  The whole split{splitRows ? ` (${splitRows.toLocaleString()} rows)` : ''}
+                </label>
+                <label className="help-toggle">
+                  <input
+                    type="radio"
+                    name="rows"
+                    checked={!wholeSplit}
+                    disabled={importMutation.isPending || isImportRunning}
+                    onChange={() => setWholeSplit(false)}
+                  />
+                  Only the first N rows
+                </label>
+                {wholeSplit ? null : (
+                  <input
+                    type="number"
+                    className="input"
+                    aria-label="How many rows"
+                    min={1}
+                    max={MAX_ROWS}
+                    value={importLimit}
+                    disabled={importMutation.isPending || isImportRunning}
+                    onChange={(event) => {
+                      const val = Number.parseInt(event.target.value, 10);
+                      setImportLimit(Number.isNaN(val) ? 1 : Math.max(1, Math.min(MAX_ROWS, val)));
+                    }}
+                  />
+                )}
+              </fieldset>
+              {rows > MOST_FILES ? (
                 <p className="muted" style={{ margin: 0 }}>
-                  About {Math.ceil(importLimit / MOST_FILES).toLocaleString()} rows go in each file,
-                  so the collection gets at most about {MOST_FILES.toLocaleString()} files instead
-                  of one per row.
+                  About {Math.ceil(rows / MOST_FILES).toLocaleString()} rows go in each file, so the
+                  collection gets at most about {MOST_FILES.toLocaleString()} files instead of one
+                  per row.
                 </p>
               ) : null}
             </div>
@@ -407,7 +433,7 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
                           }
                         >
                           {['failed', 'cancelled'].includes(latestImportJob.status)
-                            ? 'Retry'
+                            ? 'Try again'
                             : 'Cancel'}
                         </button>
                       ) : null}
@@ -421,6 +447,11 @@ export default function ImportDatasetPanel({ bucketId, onImportQueued }: ImportD
                       <span>{step.message || 'Waiting to start'}</span>
                     )}
                   </div>
+                  {['failed', 'cancelled'].includes(latestImportJob.status) ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Try again carries on where it stopped.
+                    </p>
+                  ) : null}
 
                   {/* Show counts or bounded progress */}
                   {step.total > 0 ? (

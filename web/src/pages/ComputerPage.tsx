@@ -1,16 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import {
-  api,
-  type GpuCheck,
-  type Preset,
-  type SpeedTest,
-  type SpeedTestCreate,
-} from '../api/client';
-import EstimateBox, { SizePicker, type Size } from '../components/EstimateBox';
+import { api, type GpuCheck, type SpeedTest, type SpeedTestCreate } from '../api/client';
 import JobStatus, { useJob } from '../components/JobStatus';
 import { Card, CardHead, Empty, ErrorBox, Notice } from '../components/ui';
+import { APPEARANCES, useAppearance } from '../lib/appearance';
 import { compactNumber, gigabytes, relativeDate } from '../lib/format';
 import { jobBusy } from '../lib/measure';
 
@@ -18,23 +12,24 @@ const SEQUENCES = [1, 2, 4, 8, 16];
 
 function shapeWords(test: SpeedTest): string {
   if (test.preset) return test.preset;
-  const shape = test.shape as Record<string, number>;
-  return `${shape.n_layer} blocks, ${shape.d_model} wide`;
+  const shape = test.shape as Record<string, number> | null;
+  return shape ? `${shape.n_layer} blocks, ${shape.d_model} wide` : 'A standard small model';
 }
 
 export default function ComputerPage() {
   const machine = useQuery({ queryKey: ['gpu'], queryFn: api.checkGpu });
-  const presets = useQuery({ queryKey: ['presets'], queryFn: api.listPresets });
 
   return (
     <>
       <div className="page-intro">
-        <h1 className="h1">This computer</h1>
+        <h1 className="h1">Settings</h1>
         <p className="lede">
-          What this computer can train: its graphics card, how fast it really is, and how long a run
-          would take before you start one.
+          How Forge looks, and what this computer can train: its graphics card and how fast it
+          really is.
         </p>
       </div>
+
+      <AppearanceCard />
 
       <Card>
         <CardHead
@@ -61,26 +56,38 @@ export default function ComputerPage() {
         </div>
       </Card>
 
-      {presets.error ? (
-        <ErrorBox message={presets.error.message} onRetry={() => void presets.refetch()} />
-      ) : presets.isPending ? (
-        <p className="muted" role="status">
-          Loading model sizes…
-        </p>
-      ) : (
-        <>
-          <SpeedTestCard presets={presets.data} />
-          <EstimateCard presets={presets.data} />
-        </>
-      )}
+      <SpeedTestCard />
     </>
   );
 }
 
-function SpeedTestCard({ presets }: { presets: Preset[] }) {
+function AppearanceCard() {
+  const [appearance, setAppearance] = useAppearance();
+  return (
+    <Card>
+      <CardHead title="Appearance" />
+      <div className="card-body">
+        <div className="seg" role="group" aria-label="Appearance">
+          {APPEARANCES.map((one) => (
+            <button
+              key={one.value}
+              type="button"
+              className={appearance === one.value ? 'on' : undefined}
+              aria-pressed={appearance === one.value}
+              onClick={() => setAppearance(one.value)}
+            >
+              {one.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function SpeedTestCard() {
   const queryClient = useQueryClient();
   const tests = useQuery({ queryKey: ['speedTests'], queryFn: api.listSpeedTests });
-  const [size, setSize] = useState<Size>({ preset: presets[0]?.name ?? 'nano' });
   const [sequences, setSequences] = useState(4);
   const [device, setDevice] = useState<SpeedTestCreate['device']>('auto');
   const [jobId, setJobId] = useState<string | null>(null);
@@ -89,7 +96,7 @@ function SpeedTestCard({ presets }: { presets: Preset[] }) {
     void queryClient.invalidateQueries({ queryKey: ['estimate'] });
   });
   const start = useMutation({
-    mutationFn: () => api.startSpeedTest({ ...size, sequences_per_step: sequences, device }),
+    mutationFn: () => api.startSpeedTest({ sequences_per_step: sequences, device }),
     onSuccess: (started) => setJobId(started.id),
   });
   const busy = start.isPending || jobBusy(job.data);
@@ -106,11 +113,10 @@ function SpeedTestCard({ presets }: { presets: Preset[] }) {
         }}
       >
         <p className="muted" style={{ margin: 0 }}>
-          Trains a few steps on random text and times them, so hours below come from this computer
-          and not a guess. It takes under two minutes.
+          Trains a standard small model for a few steps on random text and times it, so the hours on
+          the Train page come from this computer and not a guess. It takes under two minutes.
         </p>
         <div className="dataset-form">
-          <SizePicker presets={presets} value={size} onChange={setSize} />
           <label className="field">
             <span className="label">Sequences per step</span>
             <select
@@ -188,73 +194,6 @@ function SpeedTestCard({ presets }: { presets: Preset[] }) {
           </table>
         </div>
       )}
-    </Card>
-  );
-}
-
-function EstimateCard({ presets }: { presets: Preset[] }) {
-  const [size, setSize] = useState<Size>({ preset: presets[0]?.name ?? 'nano' });
-  const [tokens, setTokens] = useState(100_000_000);
-  const [sequences, setSequences] = useState(4);
-  const [hours, setHours] = useState(0);
-  return (
-    <Card>
-      <CardHead title="How long would it take?" />
-      <div className="card-body stack">
-        <div className="dataset-form">
-          <SizePicker presets={presets} value={size} onChange={setSize} label="Size to train" />
-          <label className="field">
-            <span className="label">Word pieces to train on</span>
-            <input
-              type="number"
-              className="input"
-              aria-label="Word pieces to train on"
-              min={1}
-              value={Number.isFinite(tokens) ? tokens : ''}
-              onChange={(event) => setTokens(Number(event.target.value))}
-            />
-          </label>
-          <label className="field">
-            <span className="label">Sequences per pass</span>
-            <select
-              className="input"
-              aria-label="Sequences per pass"
-              value={sequences}
-              onChange={(event) => setSequences(Number(event.target.value))}
-            >
-              {SEQUENCES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="label">Hours you have (optional)</span>
-            <input
-              type="number"
-              className="input"
-              aria-label="Hours you have"
-              min={0}
-              step="any"
-              value={hours > 0 ? hours : ''}
-              onChange={(event) => setHours(Number(event.target.value) || 0)}
-            />
-          </label>
-        </div>
-        <EstimateBox
-          ask={
-            tokens > 0
-              ? {
-                  ...size,
-                  train_tokens: tokens,
-                  sequences_per_step: sequences,
-                  budget_hours: hours > 0 ? hours : null,
-                }
-              : null
-          }
-        />
-      </div>
     </Card>
   );
 }

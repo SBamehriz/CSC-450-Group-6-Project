@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ class Card:
     driver: str
     compute_capability: str
     free_bytes: int
+    uuid: str = ""
 
 
 @dataclass(frozen=True)
@@ -78,7 +80,30 @@ def _a_card(line: str) -> Card | None:
         or not re.fullmatch(r"[0-9]+\.[0-9]+", capability)
     ):
         return None
-    return Card(int(index), name, total * 2**20, driver, capability, free * 2**20)
+    return Card(int(index), name, total * 2**20, driver, capability, free * 2**20, uuid)
+
+
+def _visible(cards: list[Card]) -> list[Card]:
+    """The cards PyTorch sees, in its order, when CUDA_VISIBLE_DEVICES is set."""
+    asked = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if asked is None:
+        return cards
+    seen: list[Card] = []
+    for entry in (part.strip() for part in asked.split(",")):
+        found = next(
+            (
+                card
+                for card in cards
+                if entry == str(card.index)
+                or (entry.startswith("GPU-") and card.uuid.startswith(entry))
+            ),
+            None,
+        )
+        # like CUDA, stop at the first entry that names no card
+        if found is None or found in seen:
+            break
+        seen.append(found)
+    return seen
 
 
 def _cards() -> tuple[list[Card], str | None]:
@@ -88,7 +113,10 @@ def _cards() -> tuple[list[Card], str | None]:
     cards = [card for card in map(_a_card, lines) if card is not None]
     if not cards:
         return [], "\n".join(lines) or None
-    return cards, None
+    visible = _visible(cards)
+    if not visible:
+        return [], "The setting CUDA_VISIBLE_DEVICES hides every graphics card from PyTorch."
+    return visible, None
 
 
 def _torch_said() -> str | None:

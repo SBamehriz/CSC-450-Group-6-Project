@@ -3,7 +3,6 @@ import sys
 import pytest
 
 from forge import gpu
-from forge.train.presets import PRESETS, training_memory
 
 CARDS = (
     "0, GPU-1111aaaa, NVIDIA GeForce RTX 3090, 24576, 20000, 595.79, 8.6\n"
@@ -20,25 +19,22 @@ def stand_in(monkeypatch, tmp_path, printed: str, code: int = 0, err: str = ""):
     monkeypatch.setattr(gpu, "TOOL", (sys.executable, str(script)))
 
 
-def test_presets_list_every_size_with_its_count_and_memory(client):
-    response = client.get("/api/presets")
-    assert response.status_code == 200
-    sizes = {preset["name"]: preset for preset in response.json()}
-    assert list(sizes) == list(PRESETS)
-    assert sizes["135m"]["parameters"] == 133_864_704
-    assert (sizes["135m"]["n_layer"], sizes["135m"]["d_model"], sizes["135m"]["ctx_len"]) == (
-        17,
-        768,
-        1024,
-    )
-    for name, preset in sizes.items():
-        steps = [row["sequences_per_step"] for row in preset["memory"]]
-        assert steps == [1, 2, 4, 8, 16]
-        for row in preset["memory"]:
-            parts = training_memory(PRESETS[name], micro_batch_seqs=row["sequences_per_step"])
-            assert row["bytes"] == sum(parts.values())
-        needed = [row["bytes"] for row in preset["memory"]]
-        assert needed == sorted(needed)
+def test_there_are_no_size_presets_to_pick_from(client):
+    # the planner sizes a model instead
+    assert client.get("/api/presets").status_code in (404, 405)
+
+
+@pytest.mark.parametrize(
+    ("visible", "indices"),
+    [("1", [1]), ("GPU-2222", [1]), ("1,0", [1, 0]), ("0,7,1", [0]), ("", [])],
+)
+def test_only_the_cards_pytorch_can_see_count(client, monkeypatch, tmp_path, visible, indices):
+    stand_in(monkeypatch, tmp_path, CARDS)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", visible)
+    body = client.get("/api/gpu").json()
+    assert [card["index"] for card in body["cards"]] == indices
+    if not indices:
+        assert "CUDA_VISIBLE_DEVICES" in body["tool_said"]
 
 
 def test_gpu_check_reports_every_card_the_driver_lists(client, monkeypatch, tmp_path):
@@ -97,7 +93,9 @@ def test_an_answer_that_does_not_add_up_is_not_a_card(line):
 
 def test_a_card_name_with_a_comma_keeps_its_numbers():
     card = gpu._a_card("2, GPU-3333cccc, Card, Rev 2, 12288, 4096, 595.79, 8.9")
-    assert card == gpu.Card(2, "Card, Rev 2", 12288 * 2**20, "595.79", "8.9", 4096 * 2**20)
+    assert card == gpu.Card(
+        2, "Card, Rev 2", 12288 * 2**20, "595.79", "8.9", 4096 * 2**20, "GPU-3333cccc"
+    )
 
 
 def test_free_memory_is_read_fresh_each_check(client, monkeypatch, tmp_path):

@@ -21,6 +21,8 @@ const model = (id: string, source = 'forge'): Model => ({
   config: {},
   tokenizer_id: null,
   source,
+  chat: false,
+  ready: true,
   created_at: '2026-10-22T00:00:00Z',
 });
 
@@ -166,4 +168,26 @@ it('shows two models answering the same prompts side by side', async () => {
       seed: 0,
     }),
   );
+});
+
+it('holds side by side and measuring as two tabs of one page', async () => {
+  vi.spyOn(api, 'listAllModels').mockResolvedValue({ items: [model('ours')], total: 1 });
+  vi.spyOn(api, 'listPromptSets').mockResolvedValue([]);
+  vi.spyOn(api, 'listEvaluations').mockResolvedValue([]);
+  vi.spyOn(api, 'listDatasets').mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, 'listBpbEvaluations').mockResolvedValue([]);
+  vi.spyOn(api, 'compare').mockResolvedValue({ models: [side('ours')], prompt_runs: [] });
+  open(<ComparePage />, '/compare/measure?model=ours');
+  expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual([
+    'Compare',
+  ]);
+  expect(screen.getByRole('link', { name: 'Measure' }).getAttribute('aria-current')).toBe('page');
+  expect(await screen.findByText(/Evaluate small language models/)).toBeTruthy();
+  cleanup();
+  open(<ComparePage />, '/compare?model=ours');
+  expect(screen.getByRole('link', { name: 'Side by side' }).getAttribute('aria-current')).toBe(
+    'page',
+  );
+  expect(await screen.findByText(/Put two models side by side/)).toBeTruthy();
+  expect(((await screen.findByLabelText('First model')) as HTMLSelectElement).value).toBe('ours');
 });

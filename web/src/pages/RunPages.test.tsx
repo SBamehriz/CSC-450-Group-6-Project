@@ -1,67 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import {
-  api,
-  type Checkpoint,
-  type DatasetBuild,
-  type Model,
-  type Run,
-  type Tokenizer,
-} from '../api/client';
-import NewRunForm from '../components/NewRunForm';
-import { DEFAULT_SETTINGS, secondsLeft, usableBuilds } from '../lib/training';
+import { api, type Checkpoint, type Run } from '../api/client';
+import { secondsLeft } from '../lib/training';
 import { open } from '../test-utils';
 import RunDetailPage from './RunDetailPage';
-
-const vocabulary = (id: string, size: number): Tokenizer => ({
-  id,
-  name: `${id} pieces`,
-  dataset_id: null,
-  dataset_name: 'Notes',
-  requested_vocab_size: size,
-  vocab_size: size,
-  trained_on: {},
-  status: 'ready',
-  error: null,
-  created_at: '2026-10-20T00:00:00Z',
-});
-const build = (id: string, tokenizer: string, status = 'ready'): DatasetBuild => ({
-  id,
-  name: `${id} set`,
-  tokenizer_id: tokenizer,
-  dataset_id: null,
-  dataset_name: 'Notes',
-  status,
-  stats: {
-    train: { documents: 3, tokens: 100_000, bytes: 400_000 },
-    validation: { documents: 1, tokens: 10_000, bytes: 40_000 },
-  },
-  error: null,
-  created_at: '2026-10-21T00:00:00Z',
-});
-const model = (id: string, tokenizer: string | null, vocab = 812): Model => ({
-  id,
-  name: `${id} model`,
-  description: '',
-  preset: 'nano',
-  n_layer: 4,
-  d_model: 128,
-  n_head: 4,
-  ctx_len: 256,
-  vocab_size: vocab,
-  dropout: 0,
-  param_count: 900_000,
-  config: {},
-  tokenizer_id: tokenizer,
-  source: 'forge',
-  created_at: '2026-10-22T00:00:00Z',
-});
-
-const vocabularies = [vocabulary('notes', 812), vocabulary('wiki', 4096)];
-const builds = [build('mine', 'notes'), build('other', 'wiki'), build('busy', 'notes', 'building')];
 
 const run: Run = {
   id: 'run-1',
@@ -75,9 +20,23 @@ const run: Run = {
   build_name: 'mine set',
   seed: 0,
   tokens_seen: 0,
-  settings: DEFAULT_SETTINGS,
+  settings: {
+    batch_size: 16,
+    micro_batch_size: 0,
+    max_steps: 1000,
+    learning_rate: 6e-4,
+    warmup_steps: -1,
+    weight_decay: 0.1,
+    grad_clip: 1.0,
+    eval_every: 100,
+    eval_tokens: 100_000,
+    save_every: 200,
+  },
   job_id: null,
   job_status: null,
+  fine_tune: false,
+  stage: 'training',
+  stage_message: '',
   status: 'pending',
   device: 'auto',
   batch_size: 16,
@@ -112,31 +71,10 @@ const save: Checkpoint = {
 
 beforeEach(() => {
   vi.spyOn(api, 'getRunMetrics').mockResolvedValue({ run_id: 'run-1', items: [], total: 0 });
-  vi.spyOn(api, 'estimate').mockResolvedValue({
-    parameters: 900_000,
-    train_tokens: 10_000_000,
-    speed_source: 'none',
-    speed_test_id: null,
-    device_name: null,
-    tokens_per_sec: null,
-    hours: null,
-    memory_bytes: 2 ** 30,
-    free_bytes: null,
-    fits: null,
-    suggestion: null,
-  });
 });
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-});
-
-it('offers only ready training sets made with the model vocabulary', () => {
-  const tied = model('tied', 'notes');
-  expect(usableBuilds(tied, builds, vocabularies).map((b) => b.id)).toEqual(['mine']);
-  const bySize = model('old', null, 4096);
-  expect(usableBuilds(bySize, builds, vocabularies).map((b) => b.id)).toEqual(['other']);
-  expect(usableBuilds(undefined, builds, vocabularies)).toEqual([]);
 });
 
 it('estimates time left from the speed so far', () => {
@@ -149,46 +87,6 @@ it('estimates time left from the speed so far', () => {
   };
   expect(secondsLeft(going)).toBe(200);
   expect(secondsLeft(run)).toBeNull();
-});
-
-it('the form lists matching training sets, creates the run and starts it', async () => {
-  vi.spyOn(api, 'listAllModels').mockResolvedValue({
-    items: [model('tied', 'notes'), model('old', null, 4096)],
-    total: 2,
-  });
-  vi.spyOn(api, 'listBuilds').mockResolvedValue({ items: builds, total: 3 });
-  vi.spyOn(api, 'listTokenizers').mockResolvedValue({ items: vocabularies, total: 2 });
-  const create = vi.spyOn(api, 'createRun').mockResolvedValue(run);
-  const change = vi.spyOn(api, 'changeRun').mockResolvedValue({ ...run, job_status: 'pending' });
-
-  open(
-    <Routes>
-      <Route path="/history" element={<NewRunForm />} />
-      <Route path="/runs/:runId" element={<p>Run page</p>} />
-    </Routes>,
-    '/history',
-  );
-
-  fireEvent.change(screen.getByLabelText('Run name'), { target: { value: 'First run' } });
-  const picker = screen.getByLabelText('Model');
-  await within(picker).findByText(/tied model/);
-  fireEvent.change(picker, { target: { value: 'tied' } });
-
-  const sets = screen.getByLabelText('Training set');
-  await waitFor(() => expect(within(sets).queryByText('mine set')).toBeTruthy());
-  expect(within(sets).queryByText('other set')).toBeNull();
-  expect(within(sets).queryByText('busy set')).toBeNull();
-  fireEvent.change(sets, { target: { value: 'mine' } });
-
-  fireEvent.change(screen.getByLabelText('Word pieces'), { target: { value: '409600' } });
-  expect(screen.getByRole('status').textContent).toMatch(/100 steps/);
-
-  fireEvent.click(screen.getByRole('button', { name: 'Start training' }));
-  await screen.findByText('Run page');
-  expect(create).toHaveBeenCalledWith(
-    expect.objectContaining({ model_id: 'tied', build_id: 'mine', train_tokens: 409_600 }),
-  );
-  expect(change).toHaveBeenCalledWith('run-1', 'start');
 });
 
 function showRun(current: Run, saves: Checkpoint[] = []) {
@@ -242,4 +140,29 @@ it('a finished run has no action button', async () => {
   showRun({ ...run, status: 'completed', current_step: 1000 }, [save]);
   await screen.findByText('Finished');
   expect(screen.queryByRole('button', { name: /Start|Stop|Resume/ })).toBeNull();
+});
+
+it('a finished run links to chat, fine-tune and compare its model', async () => {
+  showRun({ ...run, status: 'completed', current_step: 1000 }, [save]);
+  const href = async (name: string) =>
+    (await screen.findByRole('link', { name })).getAttribute('href');
+  expect(await href('Chat with it')).toBe('/chat?model=tied');
+  expect(await href('Fine-tune it')).toBe('/train?from=tied');
+  expect(await href('Compare it')).toBe('/compare?model=tied');
+});
+
+it('says Forge is getting the text ready before training starts', async () => {
+  showRun({
+    ...run,
+    job_status: 'pending',
+    stage: 'preparing',
+    stage_message: 'Making the vocabulary (2 of 3).',
+  });
+  expect(await screen.findByText('Making the vocabulary (2 of 3).')).toBeTruthy();
+  expect(screen.queryByRole('link', { name: 'Chat with it' })).toBeNull();
+});
+
+it('a fine-tune says which model it started from', async () => {
+  showRun({ ...run, fine_tune: true, base_model_name: 'Letters model' });
+  expect(await screen.findByText(/Fine-tuned from Letters model\./)).toBeTruthy();
 });

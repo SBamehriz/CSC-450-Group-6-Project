@@ -1,19 +1,21 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import Layout from './components/Layout';
 import BucketDetailPage from './pages/BucketDetailPage';
 import BucketsPage from './pages/BucketsPage';
+import ChatPage from './pages/ChatPage';
 import ComparePage from './pages/ComparePage';
 import ComputerPage from './pages/ComputerPage';
-import DatasetsPage from './pages/DatasetsPage';
-import EvaluationsPage from './pages/EvaluationsPage';
 import ModelsPage from './pages/ModelsPage';
 import OverviewPage from './pages/OverviewPage';
-import PreparedDataPage from './pages/PreparedDataPage';
 import RunDetailPage from './pages/RunDetailPage';
 import TrainingHistoryPage from './pages/TrainingHistoryPage';
-import TrainingSetsPage from './pages/TrainingSetsPage';
-import VocabulariesPage from './pages/VocabulariesPage';
+
+// old links still work, query string and all
+function Moved({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
 
 export default function App() {
   return (
@@ -22,16 +24,19 @@ export default function App() {
         <Route path="/" element={<OverviewPage />} />
         <Route path="/data" element={<BucketsPage />} />
         <Route path="/data/:bucketId" element={<BucketDetailPage />} />
-        <Route path="/datasets" element={<DatasetsPage />} />
-        <Route path="/datasets/:datasetId/prepare" element={<PreparedDataPage />} />
-        <Route path="/vocabularies" element={<VocabulariesPage />} />
-        <Route path="/training-sets" element={<TrainingSetsPage />} />
+        <Route path="/datasets/*" element={<Moved to="/data" />} />
+        <Route path="/vocabularies" element={<Moved to="/train" />} />
+        <Route path="/training-sets" element={<Moved to="/train" />} />
         <Route path="/models" element={<ModelsPage />} />
-        <Route path="/evaluations" element={<EvaluationsPage />} />
-        <Route path="/history" element={<TrainingHistoryPage />} />
+        <Route path="/evaluations" element={<Moved to="/compare/measure" />} />
+        <Route path="/train" element={<TrainingHistoryPage />} />
+        <Route path="/history" element={<Moved to="/train" />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
+        <Route path="/chat" element={<ChatPage />} />
         <Route path="/compare" element={<ComparePage />} />
-        <Route path="/gpu" element={<ComputerPage />} />
+        <Route path="/compare/measure" element={<ComparePage />} />
+        <Route path="/settings" element={<ComputerPage />} />
+        <Route path="/gpu" element={<Moved to="/settings" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

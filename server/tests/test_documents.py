@@ -518,3 +518,71 @@ def test_text_uploads_retain_encoding_checks(client, bucket):
     doc_clean = client.get(f"/api/documents?bucket_id={bucket}&q=clean.txt").json()["items"][0]
     assert doc_clean["status"] == "parsed"
     assert "encoding_suspect" not in doc_clean["quality"].get("flags", [])
+
+
+ASK = [
+    {"role": "user", "content": "Where is Missouri State University?"},
+    {"role": "assistant", "content": "It is in Springfield, Missouri."},
+]
+
+
+def talks(*conversations):
+    return "\n".join(json.dumps({"messages": turns}) for turns in conversations).encode()
+
+
+def test_a_jsonl_file_of_conversations_makes_a_chat_collection(client, bucket):
+    brief = [{"role": "system", "content": "Be brief."}, ASK[0], {**ASK[1], "content": "Ozarks."}]
+    body = upload(client, bucket, [("msu.jsonl", talks(ASK, brief))]).json()
+    assert (body["parsed"], body["failed"]) == (2, 0)
+    assert client.get(f"/api/buckets/{bucket}").json()["kind"] == "chat"
+
+    first = next(o for o in body["outcomes"] if o["filename"] == "msu.jsonl#L1")
+    text = client.get(f"/api/documents/{first['document_id']}/text").json()["text"]
+    # the same marks the Hugging Face import writes
+    assert text == (
+        "<|user|>Where is Missouri State University?<|end|>"
+        "<|assistant|>It is in Springfield, Missouri.<|end|>"
+    )
+
+
+def test_a_conversation_that_cannot_be_used_is_named_and_the_rest_are_kept(client, bucket):
+    raw = talks(ASK, ASK[:1], [{"role": "bot", "content": "Hi"}]) + b"\nnot json\n"
+    body = upload(client, bucket, [("msu.jsonl", raw)]).json()
+    assert (body["parsed"], body["failed"]) == (1, 3)
+    said = {o["filename"]: o["error"] for o in body["outcomes"] if o["status"] == "failed"}
+    assert said == {
+        "msu.jsonl#L2": "Not used: it has no assistant answer.",
+        "msu.jsonl#L3": "Not used: the role 'bot' is not system, user or assistant.",
+        "msu.jsonl": "Not used: line 4 is not valid JSON.",
+    }
+    assert client.get(f"/api/documents?bucket_id={bucket}").json()["total"] == 1
+
+
+def test_conversations_and_plain_text_stay_in_their_own_collections(client, bucket, other_bucket):
+    upload(client, bucket, [("a.txt", TEXT)])
+    body = upload(client, bucket, [("msu.jsonl", talks(ASK))]).json()
+    assert body["parsed"] == 0 and "already holds plain text" in body["outcomes"][0]["error"]
+    assert client.get(f"/api/buckets/{bucket}").json()["kind"] == "text"
+
+    assert upload(client, other_bucket, [("msu.jsonl", talks(ASK))]).json()["parsed"] == 1
+    body = upload(client, other_bucket, [("a.txt", TEXT)]).json()
+    assert body["parsed"] == 0 and "holds conversations" in body["outcomes"][0]["error"]
+
+
+def test_a_file_with_no_usable_conversation_fails_and_a_fixed_one_still_goes_in(client, bucket):
+    body = upload(client, bucket, [("msu.jsonl", talks(ASK[:1]))]).json()
+    assert body["outcomes"][0]["error"] == (
+        "No conversation in this file can be used. The first: it has no assistant answer."
+    )
+    # the failed row does not make the collection plain text
+    assert upload(client, bucket, [("msu.jsonl", talks(ASK))]).json()["parsed"] == 1
+    assert client.get(f"/api/buckets/{bucket}").json()["kind"] == "chat"
+
+
+def test_one_file_cannot_mix_conversations_and_plain_text(client, bucket):
+    raw = talks(ASK) + b"\n" + json.dumps({"text": TEXT.decode()}).encode()
+    body = upload(client, bucket, [("mixed.jsonl", raw)]).json()
+    assert body["parsed"] == 0
+    assert body["outcomes"][0]["error"] == (
+        "This file mixes conversations and plain text. Keep one kind in a file."
+    )

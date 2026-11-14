@@ -82,9 +82,7 @@ export default function EvaluationsPage() {
   const [evalFormError, setEvalFormError] = useState<string | null>(null);
 
   // BPB Evaluation Form State (SP9.11)
-  const [bpbModelSource, setBpbModelSource] = useState<'native' | 'imported'>('native');
   const [bpbSelectedModelId, setBpbSelectedModelId] = useState(preselectedModelId);
-  const [bpbImportedModelName, setBpbImportedModelName] = useState('gpt2');
   const [bpbSelectedDatasetId, setBpbSelectedDatasetId] = useState('');
   const [bpbRunName, setBpbRunName] = useState('');
   const [bpbCtxLen, setBpbCtxLen] = useState(512);
@@ -158,21 +156,17 @@ export default function EvaluationsPage() {
   const createBpbEvaluation = useMutation({
     mutationFn: () => {
       setBpbFormError(null);
-      if (bpbModelSource === 'native' && !bpbActiveModelId) {
+      if (!bpbActiveModelId) {
         throw new Error('Please select a native model.');
-      }
-      if (bpbModelSource === 'imported' && !bpbImportedModelName.trim()) {
-        throw new Error('Please enter an imported model name or path.');
       }
       if (!bpbActiveDatasetId) {
         throw new Error('Please select a dataset snapshot.');
       }
       const payload: BpbEvaluationCreate = {
         name: bpbRunName.trim() || undefined,
-        model_source: bpbModelSource,
-        model_id: bpbModelSource === 'native' ? bpbActiveModelId : undefined,
-        imported_model_name:
-          bpbModelSource === 'imported' ? bpbImportedModelName.trim() : undefined,
+        // the server scores an imported model from its own folder
+        model_source: 'native',
+        model_id: bpbActiveModelId,
         dataset_id: bpbActiveDatasetId,
         ctx_len: bpbCtxLen,
       };
@@ -272,7 +266,6 @@ export default function EvaluationsPage() {
     <>
       <div className="overview-heading page-intro">
         <div>
-          <h1 className="h1">Model Evaluation</h1>
           <p className="lede">
             Evaluate small language models using named prompt sets or compute bits per byte (BPB) on
             held-out validation text from frozen snapshots.
@@ -568,14 +561,14 @@ export default function EvaluationsPage() {
                     ) : (
                       modelList.map((m: Model) => (
                         <option key={m.id} value={m.id}>
-                          {m.name} ({m.preset ?? 'custom'} · {m.n_layer}L/{m.d_model}W)
+                          {m.name} ({m.n_layer}L/{m.d_model}W)
                         </option>
                       ))
                     )}
                   </select>
                   <span className="hint">
                     {!modelList.length ? (
-                      <Link to="/models">Create a model first →</Link>
+                      <Link to="/train">Create a model first →</Link>
                     ) : (
                       'Choose a model architecture to evaluate.'
                     )}
@@ -865,62 +858,29 @@ export default function EvaluationsPage() {
                   createBpbEvaluation.mutate();
                 }}
               >
-                <div className="field">
-                  <span className="label">Model type</span>
-                  <div className="seg" role="radiogroup" aria-label="Model type">
-                    <button
-                      type="button"
-                      className={bpbModelSource === 'native' ? 'on' : undefined}
-                      aria-pressed={bpbModelSource === 'native'}
-                      onClick={() => setBpbModelSource('native')}
-                    >
-                      Native Forge model
-                    </button>
-                    <button
-                      type="button"
-                      className={bpbModelSource === 'imported' ? 'on' : undefined}
-                      aria-pressed={bpbModelSource === 'imported'}
-                      onClick={() => setBpbModelSource('imported')}
-                    >
-                      Imported model (SP9.8)
-                    </button>
-                  </div>
-                </div>
-
-                {bpbModelSource === 'native' ? (
-                  <label className="field">
-                    <span className="label">Select model</span>
-                    <select
-                      className="input"
-                      aria-label="Select native model"
-                      value={bpbActiveModelId}
-                      onChange={(e) => setBpbSelectedModelId(e.target.value)}
-                      disabled={!modelList.length || createBpbEvaluation.isPending}
-                    >
-                      {!modelList.length ? (
-                        <option value="">No models available</option>
-                      ) : (
-                        modelList.map((m: Model) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.preset ?? 'custom'} · {m.n_layer}L/{m.d_model}W)
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    <span className="hint">
-                      Scores negative log likelihood using our native causal transformer.
-                    </span>
-                  </label>
-                ) : (
-                  <Field
-                    label="Hugging Face model identifier or path"
-                    value={bpbImportedModelName}
-                    onChange={setBpbImportedModelName}
-                    placeholder="e.g. gpt2 or meta-llama/Llama-3.2-1B"
-                    hint="Requires SP9.8 imported model runtime. Evaluates true token likelihoods."
-                    disabled={createBpbEvaluation.isPending}
-                  />
-                )}
+                <label className="field">
+                  <span className="label">Select model</span>
+                  <select
+                    className="input"
+                    aria-label="Select native model"
+                    value={bpbActiveModelId}
+                    onChange={(e) => setBpbSelectedModelId(e.target.value)}
+                    disabled={!modelList.length || createBpbEvaluation.isPending}
+                  >
+                    {!modelList.length ? (
+                      <option value="">No models available</option>
+                    ) : (
+                      modelList.map((m: Model) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.n_layer}L/{m.d_model}W)
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <span className="hint">
+                    Scores negative log likelihood using our native causal transformer.
+                  </span>
+                </label>
 
                 <label className="field">
                   <span className="label">Frozen validation snapshot</span>
@@ -978,9 +938,7 @@ export default function EvaluationsPage() {
                     type="submit"
                     className="btn btn-primary"
                     disabled={
-                      createBpbEvaluation.isPending ||
-                      (bpbModelSource === 'native' && !modelList.length) ||
-                      !readySnapshots.length
+                      createBpbEvaluation.isPending || !modelList.length || !readySnapshots.length
                     }
                   >
                     {createBpbEvaluation.isPending

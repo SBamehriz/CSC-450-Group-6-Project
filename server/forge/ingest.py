@@ -13,6 +13,8 @@ from typing import Any
 import pypdf
 import trafilatura
 
+from forge import chatformat
+
 IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp")
 SUPPORTED = ("txt", "md", "html", "htm", "pdf", "docx", *IMAGE_EXTENSIONS, "jsonl", "json")
 
@@ -34,6 +36,9 @@ class Parsed:
     text: str
     filename: str
     metadata: dict = field(default_factory=dict)
+    # "chat" for a conversation; error says why one cannot be used
+    kind: str = "text"
+    error: str | None = None
 
 
 @dataclass
@@ -148,14 +153,10 @@ def parse_pdf_with_metadata(
     return ocr_text, metadata
 
 
-def parse_pdf(raw: bytes, filename: str = "document.pdf") -> str:
-    text, _ = parse_pdf_with_metadata(raw, filename=filename)
-    return text
-
-
 def parse_jsonl(raw: bytes, filename: str) -> list[Parsed]:
     documents: list[Parsed] = []
     problems: list[str] = []
+    talks: list[Parsed] = []
 
     for number, line in enumerate(decode(raw).splitlines(), start=1):
         line = line.strip()
@@ -165,6 +166,12 @@ def parse_jsonl(raw: bytes, filename: str) -> list[Parsed]:
             record = json.loads(line)
         except json.JSONDecodeError:
             problems.append(f"line {number} is not valid JSON")
+            continue
+        if isinstance(record, dict) and "messages" in record:
+            # a conversation, kept the way the Hugging Face import keeps one
+            why = chatformat.problem(record["messages"])
+            text = "" if why else chatformat.render(record["messages"])
+            talks.append(Parsed(text, f"{filename}#L{number}", kind="chat", error=why))
             continue
         if not isinstance(record, dict) or "text" not in record:
             problems.append(f"line {number} has no 'text' field")
@@ -183,6 +190,18 @@ def parse_jsonl(raw: bytes, filename: str) -> list[Parsed]:
             }
         documents.append(Parsed(text=text, filename=f"{filename}#L{number}", metadata=meta))
 
+    if talks:
+        if documents:
+            raise ParseError(
+                "This file mixes conversations and plain text. Keep one kind in a file."
+            )
+        if all(talk.error for talk in talks):
+            raise ParseError(
+                f"No conversation in this file can be used. The first: {talks[0].error}."
+            )
+        if problems:
+            talks.append(Parsed("", filename, kind="chat", error="; ".join(problems[:3])))
+        return talks
     if not documents:
         detail = "; ".join(problems[:3]) if problems else "it is empty"
         raise ParseError(f"No usable lines in this JSONL file, {detail}.")
@@ -272,12 +291,6 @@ def parse_docx_with_metadata(
         raise ParseError(f"No text could be extracted from {filename!r}.")
 
     return text, meta
-
-
-def parse_docx(raw: bytes, filename: str = "document.docx") -> str:
-    """Parse DOCX file, extracting paragraphs and tables with fallback to Docling."""
-    text, _ = parse_docx_with_metadata(raw, filename=filename)
-    return text
 
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -423,12 +436,6 @@ def extract_docx_with_metadata(raw: bytes) -> tuple[str, dict[str, Any]]:
     return text, metadata
 
 
-def extract_docx_paragraphs_and_tables(raw: bytes) -> str:
-    """Extract paragraphs and tables from raw DOCX bytes in document order."""
-    text, _ = extract_docx_with_metadata(raw)
-    return text
-
-
 def parse_image_with_metadata(
     raw: bytes, filename: str = "image.png"
 ) -> tuple[str, dict[str, Any]]:
@@ -468,35 +475,6 @@ def parse_image_with_metadata(
         **img_info,
     }
     return text, metadata
-
-
-def parse_image(raw: bytes, filename: str = "image.png") -> str:
-    """Parse raster image (.png, .jpg, .jpeg, etc.) using OCR."""
-    text, _ = parse_image_with_metadata(raw, filename=filename)
-    return text
-
-
-def parse_with_converter(filename: str, raw: bytes) -> list[Parsed]:
-    """Parse document using forge.converter (Docling-based) if applicable."""
-    from forge.converter import convert_bytes
-
-    try:
-        text = convert_bytes(filename, raw)
-    except Exception as problem:
-        raise ParseError(f"Converter failed on {filename!r}: {problem}") from problem
-
-    if not text.strip():
-        raise ParseError(f"No text could be extracted from {filename!r}.")
-    ext, _ = split_extension(filename)
-    meta = {
-        "source_format": ext,
-        "engine": "docling",
-        "ocr_applied": False,
-        "char_count": len(text),
-        "word_count": len(text.split()),
-        "line_count": len([line for line in text.splitlines() if line.strip()]),
-    }
-    return [Parsed(text=text, filename=filename, metadata=meta)]
 
 
 def parse(filename: str, raw: bytes) -> list[Parsed]:
@@ -625,7 +603,6 @@ def clean(text: str, mode: str = "standard", encoding_suspect: bool = False) -> 
 
 
 BINARY_EXTENSIONS = ("pdf", "docx", *IMAGE_EXTENSIONS)
-TEXT_EXTENSIONS = ("txt", "md", "html", "htm", "jsonl", "json")
 BINARY_MIME_TYPES = (
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

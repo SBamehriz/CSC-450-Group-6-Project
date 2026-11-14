@@ -30,6 +30,7 @@ def offline_hub(monkeypatch, tmp_path):
         path = tmp_path / f"hub-{part}.parquet"
         pq.write_table(pa.table({"text": rows, "label": [0] * len(rows)}), path)
         files[f"https://hub/{part}.parquet"] = path
+    monkeypatch.setattr(dataset_import, "data_file_urls", lambda *args: [])
     monkeypatch.setattr(dataset_import, "parquet_urls", lambda *args: list(files))
     monkeypatch.setattr(
         dataset_import, "download", lambda url, path: path.write_bytes(files[url].read_bytes())
@@ -137,6 +138,7 @@ def test_cancelled_big_import_leaves_no_download_behind(client, db, data_dir, mo
     _, job = start(client, ROWS)
     assert job["status"] == "cancelled", job
     assert not (data_dir / "imports" / job["id"]).exists()
+
 
 def test_each_data_file_is_closed_before_it_is_deleted(client, monkeypatch):
     import os

@@ -4,7 +4,14 @@ from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from forge.train.presets import MAX_D_MODEL, MAX_N_LAYER
+from forge.train.presets import (
+    MAX_CTX,
+    MAX_D_MODEL,
+    MAX_DROPOUT,
+    MAX_N_LAYER,
+    MAX_VOCAB,
+    MIN_CTX,
+)
 from forge.train.settings import TrainSettings
 
 T = TypeVar("T")
@@ -68,6 +75,7 @@ class BucketOut(BaseModel):
     dataset_split: str | None = None
     text_column: str | None = None
     import_limit: int | None = None
+    kind: str = "text"
 
 
 class DocumentOut(BaseModel):
@@ -194,34 +202,6 @@ class SnapshotCheck(BaseModel):
     validation_documents: int = 0
 
 
-class JobCreate(BaseModel):
-    job_type: str
-    payload: dict = Field(default_factory=dict)
-
-
-class PrepareCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    vocab_size: int = Field(default=4096, ge=257, le=16384)
-
-
-class PrepareTools(BaseModel):
-    available: bool
-    max_text_mb: int
-
-
-class PreparedOut(BaseModel):
-    ready: bool
-    message: str = ""
-    vocab_size: int = 0
-    requested_vocab_size: int = 0
-    train_tokens: int = 0
-    validation_tokens: int = 0
-    trained_on_documents: int = 0
-    eos_id: int = 0
-    sha256: str = ""
-    snapshot_sha256: str = ""
-
-
 class TokenPreviewCreate(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
 
@@ -230,22 +210,6 @@ class TokenPreview(BaseModel):
     token_count: int
     ids: list[int]
     pieces: list[str]
-
-
-class PresetMemory(BaseModel):
-    sequences_per_step: int
-    bytes: int
-
-
-class PresetOut(BaseModel):
-    name: str
-    n_layer: int
-    d_model: int
-    n_head: int
-    ctx_len: int
-    vocab_size: int
-    parameters: int
-    memory: list[PresetMemory]
 
 
 class GpuCard(BaseModel):
@@ -321,6 +285,8 @@ class HfConfigInfo(BaseModel):
     splits: list[HfSplitInfo]
     columns: list[str]
     text_columns: list[str]
+    # columns that hold conversations, like "messages"
+    chat_columns: list[str] = Field(default_factory=list)
 
 
 class HfInspectResponse(BaseModel):
@@ -337,7 +303,8 @@ class DatasetImportCreate(BaseModel):
     config: str = Field(min_length=1, max_length=100)
     split: str = Field(min_length=1, max_length=100)
     text_column: str = Field(min_length=1, max_length=100)
-    limit: int = Field(default=500, ge=1, le=100_000_000)
+    # None reads the whole split
+    limit: int | None = Field(default=None, ge=1)
 
     @field_validator("dataset", "config", "split", "text_column")
     @classmethod
@@ -408,8 +375,6 @@ class DatasetBuildOut(BaseModel):
 class ModelCreate(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     description: str = Field(default="", max_length=2000)
-    preset: str | None = None
-    dataset_id: uuid.UUID | None = None
     tokenizer_id: uuid.UUID | None = None
     n_layer: int = Field(ge=1, le=MAX_N_LAYER)
     d_model: int = Field(ge=1, le=MAX_D_MODEL)
@@ -418,36 +383,6 @@ class ModelCreate(BaseModel):
     vocab_size: int = 16384
     dropout: float = Field(default=0.0, ge=0.0, le=0.5)
     config: dict = Field(default_factory=dict)
-
-
-class ModelPreviewRequest(BaseModel):
-    preset: str | None = None
-    dataset_id: uuid.UUID | None = None
-    tokenizer_id: uuid.UUID | None = None
-    n_layer: int = Field(default=4, ge=1, le=MAX_N_LAYER)
-    d_model: int = Field(default=128, ge=1, le=MAX_D_MODEL)
-    n_head: int = Field(default=4, ge=1)
-    ctx_len: int = Field(default=512)
-    vocab_size: int | None = None
-    dropout: float = Field(default=0.0, ge=0.0, le=0.5)
-
-
-class ModelPreviewOut(BaseModel):
-    valid: bool
-    param_count: int = 0
-    estimated_memory_bytes: int = 0
-    estimated_memory_mb: float = 0.0
-    vocab_size: int = 0
-    error: str | None = None
-
-
-class VocabularyOut(BaseModel):
-    dataset_id: uuid.UUID
-    dataset_name: str
-    vocab_size: int
-    requested_vocab_size: int
-    train_tokens: int
-    trained_on_documents: int
 
 
 class ModelOut(BaseModel):
@@ -466,6 +401,12 @@ class ModelOut(BaseModel):
     tokenizer_id: uuid.UUID | None = None
     source: str = "forge"
     estimated_memory_bytes: int | None = None
+    parent_id: uuid.UUID | None = None
+    parent_name: str | None = None
+    chat: bool = False
+    # it has weights to chat with and measure
+    ready: bool = False
+    best_val_loss: float | None = None
     created_at: datetime
 
 
@@ -508,6 +449,12 @@ class RunOut(BaseModel):
     settings: TrainSettings | None = None
     job_id: uuid.UUID | None = None
     job_status: str | None = None
+    fine_tune: bool = False
+    base_model_id: uuid.UUID | None = None
+    base_model_name: str | None = None
+    # waiting, preparing, training or finished, with a plain line about it
+    stage: str = "training"
+    stage_message: str = ""
     status: str
     device: str
     batch_size: int
@@ -591,12 +538,6 @@ class EvaluationCreate(BaseModel):
     temperature: float = 0.7
 
 
-class PromptEvalResult(BaseModel):
-    prompt: str
-    output: str
-    tokens_generated: int = 0
-
-
 class EvaluationOut(BaseModel):
     id: uuid.UUID
     name: str
@@ -652,12 +593,11 @@ class ShapeIn(BaseModel):
     n_layer: int = Field(ge=1, le=MAX_N_LAYER)
     d_model: int = Field(ge=1, le=MAX_D_MODEL)
     n_head: int = Field(ge=1)
-    ctx_len: int = Field(ge=64, le=2048)
+    ctx_len: int = Field(ge=MIN_CTX, le=MAX_CTX)
     vocab_size: int = Field(default=16384, ge=2, le=262_144)
 
 
 class SpeedTestCreate(BaseModel):
-    preset: str | None = None
     shape: ShapeIn | None = None
     sequences_per_step: int = Field(default=4, ge=1, le=256)
     device: Literal["auto", "cpu", "cuda"] = "auto"
@@ -679,7 +619,6 @@ class SpeedTestOut(BaseModel):
 
 
 class EstimateRequest(BaseModel):
-    preset: str | None = None
     shape: ShapeIn | None = None
     train_tokens: int = Field(ge=1)
     sequences_per_step: int = Field(default=4, ge=1, le=256)
@@ -821,3 +760,98 @@ class EvalResultOut(BaseModel):
     benchmark_score: float | None
     benchmark_scores: dict[str, Any]
     created_at: datetime
+
+
+Device = Literal["auto", "cpu", "cuda"]
+
+
+class PlanRequest(BaseModel):
+    # give a size or the hours you have, anything else set here is kept
+    model_config = ConfigDict(extra="forbid")
+
+    bucket_id: uuid.UUID | None = None
+    # fine-tune this model instead of making a new one
+    base_model_id: uuid.UUID | None = None
+    parameters: int | None = Field(default=None, ge=10_000, le=100_000_000_000)
+    hours: float | None = Field(default=None, gt=0, le=10_000)
+    device: Device = "auto"
+    n_layer: int | None = Field(default=None, ge=1, le=MAX_N_LAYER)
+    d_model: int | None = Field(default=None, ge=8, le=MAX_D_MODEL)
+    n_head: int | None = Field(default=None, ge=1)
+    ctx_len: int | None = Field(default=None, ge=MIN_CTX, le=MAX_CTX)
+    vocab_size: int | None = Field(default=None, ge=300, le=MAX_VOCAB)
+    dropout: float | None = Field(default=None, ge=0.0, le=MAX_DROPOUT)
+    train_tokens: int | None = Field(default=None, ge=1)
+    batch_size: int | None = Field(default=None, ge=1, le=4096)
+    learning_rate: float | None = Field(default=None, gt=0.0, le=1.0)
+    warmup_steps: int | None = Field(default=None, ge=0)
+    weight_decay: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class PlanData(BaseModel):
+    # tokens in the collection; a guess until it has been prepared once
+    tokens: int | None
+    exact: bool
+    passes: float | None
+    enough: bool | None
+
+
+class PlanMemory(BaseModel):
+    needed_bytes: int
+    free_bytes: int | None
+    cards: int
+    card_name: str | None
+    sequences_per_pass: int
+    fits: bool | None
+
+
+class PlanTime(BaseModel):
+    tokens_per_sec: float | None
+    hours: float | None
+    source: Literal["measured", "scaled", "none"]
+
+
+class PlanOut(BaseModel):
+    fine_tune: bool
+    shape: ShapeIn
+    dropout: float
+    parameters: int
+    train_tokens: int
+    settings: TrainSettings
+    # one short reason per field name, e.g. why["n_layer"]
+    why: dict[str, str]
+    data: PlanData
+    memory: PlanMemory
+    time: PlanTime
+    warnings: list[str]
+    # reasons it can't start; empty when it can
+    blockers: list[str]
+
+
+class TrainCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+    bucket_id: uuid.UUID
+    base_model_id: uuid.UUID | None = None
+    # needed for a new model; a fine-tune keeps its base model's shape
+    shape: ShapeIn | None = None
+    dropout: float = Field(default=0.0, ge=0.0, le=MAX_DROPOUT)
+    settings: TrainSettings = Field(default_factory=TrainSettings)
+    seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    device: Device = "auto"
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str = Field(max_length=100_000)
+
+
+class ChatRequest(BaseModel):
+    # streamed back as {"text": ...} pieces, then {"done": true, ...} or {"error": ...}
+    model_id: uuid.UUID
+    messages: list[ChatMessage] = Field(min_length=1, max_length=200)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    top_p: float = Field(default=0.95, gt=0.0, le=1.0)
+    max_new_tokens: int = Field(default=256, ge=1, le=4096)
+    seed: int | None = Field(default=None, ge=0, le=2**31 - 1)

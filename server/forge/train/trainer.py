@@ -1,4 +1,5 @@
 import errno
+import gc
 import hashlib
 import json
 import math
@@ -14,8 +15,10 @@ import torch
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from forge import chatformat
 from forge.config import get_settings
 from forge.db import get_engine, open_session
+from forge.gpu import free_gpu_memory
 from forge.jobs import Canceled, JobFailed, report
 from forge.models import Checkpoint, DatasetBuild, Job, MetricPoint, Model, Run
 from forge.train.metrics import MetricBuffer
@@ -49,12 +52,19 @@ def window_for(train: TokenFile, ctx_len: int) -> int:
 
 
 def train_batch(
-    train: TokenFile, window: int, seed: int, step: int, part: int, size: int
+    train: TokenFile, window: int, seed: int, step: int, size: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    rng = np.random.default_rng([seed, step, part])
+    # the whole step's batch, from the seed and the step only, however it is cut into passes
+    rng = np.random.default_rng([seed, step])
     starts = rng.integers(0, len(train) - window, size=size)
     rows = np.stack([np.asarray(train.tokens[s : s + window + 1], dtype=np.int64) for s in starts])
     return rows[:, :-1], rows[:, 1:]
+
+
+def learned_only(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    # a chat fine-tune learns only the assistant's words; the loss skips -1
+    rows = np.concatenate([x[:, :1], y], axis=1)
+    return np.where(chatformat.learned(rows)[:, 1:], y, -1)
 
 
 def validation_batches(validation: TokenFile, window: int, max_tokens: int, size: int):
@@ -74,20 +84,38 @@ def validation_batches(validation: TokenFile, window: int, max_tokens: int, size
 def free_card_memory() -> int | None:
     if not torch.cuda.is_available():
         return None
-    free, _total = torch.cuda.mem_get_info()
-    return int(free)
+    # the smallest card's: a pass is split evenly across the cards
+    return min(int(torch.cuda.mem_get_info(i)[0]) for i in range(torch.cuda.device_count()))
 
 
-def pick_micro_batch(config: ModelConfig, batch_size: int, device: str) -> int:
+def pick_micro_batch(config: ModelConfig, batch_size: int, device: str, cards: int = 1) -> int:
     if device != "cuda":
         return min(batch_size, 8) if batch_size % min(batch_size, 8) == 0 else 1
     free = free_card_memory() or 0
     for size in range(batch_size, 0, -1):
         if batch_size % size:
             continue
-        if sum(training_memory(config, size).values()) <= free * 0.9:
+        if sum(training_memory(config, math.ceil(size / cards)).values()) <= free * 0.9:
             return size
     return 1
+
+
+def card_count(device: str) -> int:
+    return torch.cuda.device_count() if device == "cuda" else 0
+
+
+def real_bf16() -> bool:
+    # emulated bf16 is slow on older cards
+    try:
+        return torch.cuda.is_bf16_supported(including_emulation=False)
+    except TypeError:  # older PyTorch has no such argument
+        return torch.cuda.is_bf16_supported()
+
+
+def _out_of_memory(problem: BaseException) -> bool:
+    return isinstance(problem, torch.cuda.OutOfMemoryError) or (
+        isinstance(problem, RuntimeError) and "out of memory" in str(problem).lower()
+    )
 
 
 def pick_device(asked: str) -> str:
@@ -196,19 +224,24 @@ def _evaluate(
     size: int,
     device: str,
     dtype: torch.dtype | None,
+    chat: bool = False,
 ) -> float | None:
     model.eval()
     total, count = 0.0, 0
     with torch.no_grad():
         for x, y in validation_batches(validation, window, settings.eval_tokens, size):
+            y = learned_only(x, y) if chat else y
+            learned = int((y != -1).sum())
+            if not learned:
+                continue
             xs, ys = torch.from_numpy(x).to(device), torch.from_numpy(y).to(device)
             with torch.autocast(
                 device_type=device, dtype=dtype or torch.float32, enabled=dtype is not None
             ):
                 _, loss = model(xs, ys)
             assert loss is not None
-            total += float(loss) * ys.numel()
-            count += ys.numel()
+            total += float(loss) * learned
+            count += learned
     model.train()
     return total / count if count else None
 
@@ -221,6 +254,12 @@ def _nan(step: int) -> JobFailed:
 
 
 def _oom(step: int, micro: int) -> JobFailed:
+    if micro <= 1:
+        return JobFailed(
+            f"The graphics card ran out of memory at step {step:,} even with one sequence per "
+            "pass. Choose a smaller model, or resume this one after closing other programs that "
+            "use the card."
+        )
     smaller = max(1, micro // 2)
     return JobFailed(
         f"The graphics card ran out of memory at step {step:,} with {micro} sequences per pass. "
@@ -237,6 +276,30 @@ def _disk_full(step: int) -> JobFailed:
 
 
 def train(job_id: uuid.UUID) -> dict:
+    try:
+        return _train(job_id)
+    except (JobFailed, Canceled) as problem:
+        # its traceback holds the model; drop it so the card memory can be freed
+        cause: BaseException | None = problem
+        while cause is not None:
+            cause.__traceback__ = None
+            cause = cause.__cause__ or cause.__context__
+        raise
+    finally:
+        gc.collect()
+        free_gpu_memory()
+
+
+def _not_ready(session: Session, run: Run) -> str:
+    # say why the text could not be made ready, when POST /api/train lined it up
+    for job_id in run.hyperparams.get("prepare_jobs", []):
+        step = session.get(Job, uuid.UUID(job_id))
+        if step is not None and step.status in ("failed", "cancelled"):
+            return f"The text for this run could not be made ready. {step.error or ''}".strip()
+    return "This run's training set is missing or not ready."
+
+
+def _train(job_id: uuid.UUID) -> dict:
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         assert job is not None
@@ -250,7 +313,7 @@ def train(job_id: uuid.UUID) -> dict:
         if model_row is None:
             raise JobFailed("This run's model was deleted.")
         if build is None or build.status != "ready" or not build.manifest_uri:
-            raise JobFailed("This run's training set is missing or not ready.")
+            raise JobFailed(_not_ready(session, run))
         settings = TrainSettings.model_validate(run.hyperparams.get("settings", {}))
         config = ModelConfig(
             n_layer=model_row.n_layer,
@@ -265,6 +328,15 @@ def train(job_id: uuid.UUID) -> dict:
         checkpoint = latest_checkpoint(session, run_id) if resume else None
         if resume and checkpoint is None:
             raise JobFailed("There is no save point to resume from. Start a new run instead.")
+        # a fine-tune starts from another model's save point
+        start = None
+        if run.init_checkpoint_id and not resume:
+            start = session.get(Checkpoint, run.init_checkpoint_id)
+            if start is None:
+                raise JobFailed(
+                    "The save point this fine-tune starts from was deleted. Start a new fine-tune."
+                )
+        chat = bool(run.hyperparams.get("chat"))
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("vocab_size", config.vocab_size) > config.vocab_size:
@@ -278,16 +350,32 @@ def train(job_id: uuid.UUID) -> dict:
     window = window_for(train_file, config.ctx_len)
 
     device = pick_device(asked_device)
-    dtype = torch.bfloat16 if device == "cuda" and torch.cuda.is_bf16_supported() else None
-    micro = settings.micro_batch_size or pick_micro_batch(config, settings.batch_size, device)
+    dtype = torch.bfloat16 if device == "cuda" and real_bf16() else None
+    cards = card_count(device)
+    micro = settings.micro_batch_size or pick_micro_batch(
+        config, settings.batch_size, device, max(1, cards)
+    )
     if settings.batch_size % micro:
         micro = 1
     accumulation = settings.batch_size // micro
 
     torch.manual_seed(seed)
     model = GPT(config).to(device)
+    # two or more cards split each pass; save points keep the plain model's weights
+    runner: torch.nn.Module = model
+    if cards > 1:
+        model.autocast_dtype = dtype
+        runner = torch.nn.DataParallel(model)
     optimizer = model.configure_optimizer(settings.learning_rate, settings.weight_decay)
     start_step, tokens_seen = 0, 0
+    if start is not None:
+        try:
+            # only the weights: a fine-tune starts with a fresh optimizer
+            model.load_state_dict(load_checkpoint(start)["model"])
+        except RuntimeError as problem:
+            raise JobFailed(
+                "The save point this fine-tune starts from does not match the model's shape."
+            ) from problem
     if checkpoint is not None:
         state = load_checkpoint(checkpoint)
         model.load_state_dict(state["model"])
@@ -304,6 +392,13 @@ def train(job_id: uuid.UUID) -> dict:
             )
             session.commit()
 
+    facts = {
+        "window": window,
+        "micro_batch_size": micro,
+        "accumulation": accumulation,
+        "cards": cards,
+        "card_names": [torch.cuda.get_device_name(i) for i in range(cards)],
+    }
     _set_run(
         run_id,
         status="running",
@@ -311,7 +406,7 @@ def train(job_id: uuid.UUID) -> dict:
         device=device,
         started_at=datetime.now(UTC),
         completed_at=None,
-        metrics={"window": window, "micro_batch_size": micro, "accumulation": accumulation},
+        metrics=dict(facts),
     )
     model.train()
     step = start_step
@@ -353,18 +448,45 @@ def train(job_id: uuid.UUID) -> dict:
                 for group in optimizer.param_groups:
                     group["lr"] = rate
                 optimizer.zero_grad(set_to_none=True)
+                batch_x, batch_y = train_batch(train_file, window, seed, step, settings.batch_size)
+                if chat:
+                    batch_y = learned_only(batch_x, batch_y)
+                learned = int((batch_y != -1).sum())
                 total = 0.0
-                for part in range(accumulation):
-                    x, y = train_batch(train_file, window, seed, step, part, micro)
-                    xs, ys = torch.from_numpy(x).to(device), torch.from_numpy(y).to(device)
-                    with torch.autocast(
-                        device_type=device, dtype=dtype or torch.float32, enabled=dtype is not None
-                    ):
-                        _, loss = model(xs, ys)
-                    assert loss is not None
-                    (loss / accumulation).backward()
-                    total += float(loss.detach()) / accumulation
-                if not math.isfinite(total):
+                while learned:
+                    try:
+                        for first in range(0, settings.batch_size, micro):
+                            x, y = batch_x[first : first + micro], batch_y[first : first + micro]
+                            share = int((y != -1).sum())
+                            if not share:
+                                continue
+                            xs, ys = torch.from_numpy(x).to(device), torch.from_numpy(y).to(device)
+                            with torch.autocast(
+                                device_type=device,
+                                dtype=dtype or torch.float32,
+                                enabled=dtype is not None,
+                            ):
+                                _, loss = runner(xs, ys)
+                            assert loss is not None
+                            # one loss per card when the pass was split
+                            loss = loss.mean()
+                            (loss * share / learned).backward()
+                            total += float(loss.detach()) * share / learned
+                        break
+                    except RuntimeError as problem:
+                        if not _out_of_memory(problem) or micro == 1:
+                            raise
+                    # a small card: the same step again, in passes half the size
+                    optimizer.zero_grad(set_to_none=True)
+                    total, micro = 0.0, micro // 2
+                    gc.collect()
+                    free_gpu_memory()
+                    facts["micro_batch_size"] = micro
+                    _set_run(run_id, metrics=dict(facts))
+                if not learned:
+                    # nothing to learn in this step, so no update
+                    total = last_loss
+                elif not math.isfinite(total):
                     raise _nan(step + 1)
                 if settings.grad_clip:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), settings.grad_clip)
@@ -377,7 +499,9 @@ def train(job_id: uuid.UUID) -> dict:
                 speed = (done - start_step) * step_tokens / elapsed
                 val = None
                 if done % settings.eval_every == 0 or done == settings.max_steps:
-                    val = _evaluate(model, validation_file, window, settings, micro, device, dtype)
+                    val = _evaluate(
+                        model, validation_file, window, settings, micro, device, dtype, chat
+                    )
                     if val is not None and not math.isfinite(val):
                         raise _nan(done)
                     last_val = val if val is not None else last_val

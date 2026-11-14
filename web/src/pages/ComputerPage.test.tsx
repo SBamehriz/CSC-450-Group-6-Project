@@ -2,22 +2,11 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import { api, type Estimate, type GpuCheck, type Job, type Preset } from '../api/client';
+import { api, type GpuCheck, type Job } from '../api/client';
 import { open } from '../test-utils';
 import ComputerPage from './ComputerPage';
 
 const GB = 2 ** 30;
-
-const nano: Preset = {
-  name: 'nano',
-  n_layer: 4,
-  d_model: 128,
-  n_head: 4,
-  ctx_len: 512,
-  vocab_size: 16384,
-  parameters: 2_956_032,
-  memory: [],
-};
 
 const card: GpuCheck = {
   cards: [
@@ -35,23 +24,6 @@ const card: GpuCheck = {
   torch_version: '2.14.1+cu130',
   torch_cuda: '13.0',
 };
-
-function estimate(change: Partial<Estimate>): Estimate {
-  return {
-    parameters: 2_956_032,
-    train_tokens: 100_000_000,
-    speed_source: 'measured',
-    speed_test_id: 'test-1',
-    device_name: 'NVIDIA GeForce RTX 3050 Laptop GPU',
-    tokens_per_sec: 50_000,
-    hours: 100_000_000 / 50_000 / 3600,
-    memory_bytes: 1 * GB,
-    free_bytes: 3 * GB,
-    fits: true,
-    suggestion: null,
-    ...change,
-  };
-}
 
 const job = (status: string, change: Partial<Job> = {}): Job => ({
   id: 'job-1',
@@ -71,14 +43,14 @@ const job = (status: string, change: Partial<Job> = {}): Job => ({
 
 beforeEach(() => {
   vi.spyOn(api, 'checkGpu').mockResolvedValue(card);
-  vi.spyOn(api, 'listPresets').mockResolvedValue([nano]);
   vi.spyOn(api, 'listSpeedTests').mockResolvedValue([]);
-  vi.spyOn(api, 'estimate').mockResolvedValue(estimate({}));
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  localStorage.clear();
+  document.documentElement.removeAttribute('data-theme');
 });
 
 it('shows the card with its total and free memory', async () => {
@@ -112,54 +84,38 @@ it('recovers when the check fails', async () => {
   expect(await screen.findByText('NVIDIA GeForce RTX 3050 Laptop GPU', { selector: 'dd' }));
 });
 
-it('says the hours come from a speed test on this computer', async () => {
+it('chooses light, dark or this computer, light when nothing is kept', async () => {
   open(<ComputerPage />);
-  expect(await screen.findByText(/About 33 min to train 100M word pieces/)).toBeTruthy();
-  expect(screen.getByText(/Speed measured on this computer/)).toBeTruthy();
-  expect(screen.getByText(/3.0 GB is free on the graphics card right now. It fits./)).toBeTruthy();
+  const light = screen.getByRole('button', { name: 'Light' });
+  expect(light.getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+  expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  expect(localStorage.getItem('forge.appearance')).toBe('dark');
+  fireEvent.click(screen.getByRole('button', { name: 'Match this computer' }));
+  expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  expect(localStorage.getItem('forge.appearance')).toBe('system');
+  fireEvent.click(light);
+  expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  expect(localStorage.getItem('forge.appearance')).toBeNull();
 });
 
-it('turns the hours you have into a word piece budget', async () => {
-  vi.mocked(api.estimate).mockResolvedValue(estimate({ budget_tokens: 59_000_000 }));
+it('names a speed test with no shape', async () => {
+  vi.mocked(api.listSpeedTests).mockResolvedValue([
+    {
+      id: 'test-1',
+      preset: null,
+      shape: null,
+      sequences_per_step: 4,
+      device_name: 'CPU',
+      tokens_per_sec: 1200,
+      peak_memory_bytes: null,
+      created_at: '2026-11-01T00:00:00Z',
+    } as never,
+  ]);
   open(<ComputerPage />);
-  const hours = await screen.findByLabelText('Hours you have');
-  fireEvent.change(hours, { target: { value: '0.5' } });
-  await waitFor(() =>
-    expect(vi.mocked(api.estimate)).toHaveBeenLastCalledWith(
-      expect.objectContaining({ budget_hours: 0.5 }),
-    ),
-  );
-  expect(
-    await screen.findByText(
-      /In the hours you have it can train about 59M word pieces, 20.0 per parameter/,
-    ),
-  ).toBeTruthy();
-});
-
-it('says when the speed was scaled from another size', async () => {
-  vi.mocked(api.estimate).mockResolvedValue(estimate({ speed_source: 'scaled' }));
-  open(<ComputerPage />);
-  expect(await screen.findByText(/Speed scaled from a speed test of another size/)).toBeTruthy();
-});
-
-it('asks for a speed test when there is none, and suggests a fix when it does not fit', async () => {
-  vi.mocked(api.estimate).mockResolvedValue(
-    estimate({
-      speed_source: 'none',
-      speed_test_id: null,
-      device_name: null,
-      tokens_per_sec: null,
-      hours: null,
-      memory_bytes: 5 * GB,
-      fits: false,
-      suggestion: 'Use 2 sequences per pass.',
-    }),
-  );
-  open(<ComputerPage />);
-  expect(await screen.findByText('Run a speed test to see hours.')).toBeTruthy();
-  expect(screen.queryByText(/to train 100M word pieces/)).toBeNull();
-  expect(screen.getByText(/only 3.0 GB is free/)).toBeTruthy();
-  expect(screen.getByText('Use 2 sequences per pass.')).toBeTruthy();
+  expect(await screen.findByText('A standard small model')).toBeTruthy();
+  expect(screen.queryByLabelText('Size')).toBeNull();
+  expect(screen.queryByText('How long would it take?')).toBeNull();
 });
 
 it('runs a speed test and shows its progress', async () => {
@@ -169,10 +125,6 @@ it('runs a speed test and shows its progress', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Run speed test' }));
   expect(await screen.findByText('Timing training steps')).toBeTruthy();
   await waitFor(() =>
-    expect(api.startSpeedTest).toHaveBeenCalledWith({
-      preset: 'nano',
-      sequences_per_step: 4,
-      device: 'auto',
-    }),
+    expect(api.startSpeedTest).toHaveBeenCalledWith({ sequences_per_step: 4, device: 'auto' }),
   );
 });

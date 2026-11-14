@@ -1,0 +1,66 @@
+.planner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: var(--s5);
+  align-items: start;
+}
+
+.planner-group {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.planner-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 25px;
+}
+
+.planner-end {
+  margin-left: auto;
+}
+
+/* changed by hand */
+.planner-changed .input {
+  border-color: var(--accent);
+}
+
+.planner-bad {
+  color: var(--accent);
+}
+
+.planner-summary {
+  padding: var(--s4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.planner-summary .run-numbers {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.planner-summary .notice {
+  margin: 0;
+}
+
+.planner-go > .field {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+@media (max-width: 760px) {
+  .planner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .planner-go {
+    flex-wrap: wrap;
+  }
+}

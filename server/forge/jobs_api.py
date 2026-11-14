@@ -17,7 +17,6 @@ from forge.datasets import _load_one
 from forge.db import get_session
 from forge.errors import ApiError
 from forge.models import Dataset, DatasetBuild, Job, Tokenizer
-from forge.preparation import tools_available
 from forge.schemas import (
     DatasetBuildCreate,
     DatasetBuildOut,
@@ -32,6 +31,14 @@ from forge.schemas import (
 )
 
 router = APIRouter(tags=["jobs"])
+
+
+def tools_available() -> bool:
+    try:
+        import tokenizers  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 def _tools() -> None:

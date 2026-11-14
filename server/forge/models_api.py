@@ -2,19 +2,20 @@ import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from forge import hub
+from forge.chat_api import unload_models
 from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
 from forge.jobs_api import queue_task
+from forge.measuring import pick_checkpoint
 from forge.models import (
     BpbEvaluation,
     Checkpoint,
-    Dataset,
     EvalResult,
     Evaluation,
     Model,
@@ -26,17 +27,9 @@ from forge.schemas import (
     JobOut,
     ModelCreate,
     ModelOut,
-    ModelPreviewOut,
-    ModelPreviewRequest,
     Page,
-    VocabularyOut,
 )
 from forge.train.presets import (
-    ALLOWED_CTX,
-    MAX_D_MODEL,
-    MAX_DROPOUT,
-    MAX_N_LAYER,
-    PRESETS,
     ModelConfig,
     count_params,
     explain_shape_error,
@@ -64,6 +57,10 @@ def _model_to_out(model: Model) -> ModelOut:
     except Exception:
         mem = None
 
+    session = object_session(model)
+    best = pick_checkpoint(session, model.id) if session else None
+    parent = session.get(Model, model.parent_id) if session and model.parent_id else None
+    folder = get_settings().data_dir / model.artifact_uri if model.artifact_uri else None
     return ModelOut(
         id=model.id,
         name=model.name,
@@ -80,129 +77,28 @@ def _model_to_out(model: Model) -> ModelOut:
         tokenizer_id=model.tokenizer_id,
         source=model.source,
         estimated_memory_bytes=mem,
+        parent_id=model.parent_id,
+        parent_name=parent.name if parent else None,
+        chat=model.chat,
+        ready=best is not None or (model.source == "hub" and bool(folder and folder.is_dir())),
+        best_val_loss=best.val_loss if best else None,
         created_at=model.created_at,
     )
-
-
-@router.get("/models/presets")
-def get_presets() -> dict:
-    """Return model preset shapes and validation boundaries."""
-    return {
-        "presets": {
-            name: {
-                "n_layer": cfg.n_layer,
-                "d_model": cfg.d_model,
-                "n_head": cfg.n_head,
-                "ctx_len": cfg.ctx_len,
-                "vocab_size": cfg.vocab_size,
-                "dropout": cfg.dropout,
-                "param_count": count_params(cfg),
-                "estimated_memory_bytes": sum(training_memory(cfg, 8).values()),
-            }
-            for name, cfg in PRESETS.items()
-        },
-        "limits": {
-            "max_n_layer": MAX_N_LAYER,
-            "max_d_model": MAX_D_MODEL,
-            "allowed_ctx": list(ALLOWED_CTX),
-            "max_dropout": MAX_DROPOUT,
-        },
-    }
-
-
-@router.get("/models/vocabularies", response_model=list[VocabularyOut])
-def list_vocabularies(session: Session = Depends(get_session)) -> list[VocabularyOut]:
-    """List available vocabularies learned from prepared datasets."""
-    datasets = session.execute(select(Dataset).order_by(Dataset.created_at.desc())).scalars().all()
-
-    vocabularies: list[VocabularyOut] = []
-    for ds in datasets:
-        prep = ds.config.get("prepared", {})
-        if prep.get("ready") and prep.get("vocab_size"):
-            vocabularies.append(
-                VocabularyOut(
-                    dataset_id=ds.id,
-                    dataset_name=ds.name,
-                    vocab_size=int(prep["vocab_size"]),
-                    requested_vocab_size=int(prep.get("requested_vocab_size", prep["vocab_size"])),
-                    train_tokens=int(prep.get("train_tokens", 0)),
-                    trained_on_documents=int(prep.get("trained_on_documents", 0)),
-                )
-            )
-    return vocabularies
-
-
-@router.post("/models/preview", response_model=ModelPreviewOut)
-def preview_model_shape(
-    payload: ModelPreviewRequest,
-    session: Session = Depends(get_session),
-) -> ModelPreviewOut:
-    """Preview model parameter count and estimated memory before saving."""
-    vocab_size = 16384
-    if payload.tokenizer_id:
-        vocabulary = session.get(Tokenizer, payload.tokenizer_id)
-        if vocabulary is None or vocabulary.status != "ready" or not vocabulary.vocab_size:
-            return ModelPreviewOut(valid=False, error="Choose a ready vocabulary.")
-        vocab_size = vocabulary.vocab_size
-    elif payload.dataset_id:
-        ds = session.get(Dataset, payload.dataset_id)
-        if not ds:
-            return ModelPreviewOut(
-                valid=False,
-                error="The selected vocabulary dataset was not found.",
-            )
-        prep = ds.config.get("prepared", {})
-        if not prep.get("ready") or not prep.get("vocab_size"):
-            return ModelPreviewOut(
-                valid=False,
-                error=f"Dataset '{ds.name}' does not have prepared token data yet.",
-            )
-        vocab_size = int(prep["vocab_size"])
-    elif payload.vocab_size:
-        vocab_size = payload.vocab_size
-
-    # Check validation rules and explain in plain language
-    shape_error = explain_shape_error(
-        n_layer=payload.n_layer,
-        d_model=payload.d_model,
-        n_head=payload.n_head,
-        ctx_len=payload.ctx_len,
-        vocab_size=vocab_size,
-        dropout=payload.dropout,
-    )
-    if shape_error:
-        return ModelPreviewOut(valid=False, vocab_size=vocab_size, error=shape_error)
-
-    try:
-        cfg = ModelConfig(
-            n_layer=payload.n_layer,
-            d_model=payload.d_model,
-            n_head=payload.n_head,
-            ctx_len=payload.ctx_len,
-            vocab_size=vocab_size,
-            dropout=payload.dropout,
-        )
-        validate(cfg)
-        params = count_params(cfg)
-        mem = sum(training_memory(cfg, 8).values())
-        return ModelPreviewOut(
-            valid=True,
-            param_count=params,
-            estimated_memory_bytes=mem,
-            estimated_memory_mb=round(mem / (1024 * 1024), 2),
-            vocab_size=vocab_size,
-        )
-    except ValueError as err:
-        return ModelPreviewOut(valid=False, vocab_size=vocab_size, error=str(err))
 
 
 @router.get("/models", response_model=Page[ModelOut])
 def list_models(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    ready: bool | None = Query(default=None),
     session: Session = Depends(get_session),
 ) -> Page[ModelOut]:
     """List saved models, newest first, with stable pagination."""
+    if ready is not None:
+        # only models with weights to chat with, or only those without
+        every = session.scalars(select(Model).order_by(Model.created_at.desc(), Model.id.desc()))
+        outs = [out for out in map(_model_to_out, every) if out.ready == ready]
+        return Page[ModelOut](items=outs[offset : offset + limit], total=len(outs))
     total = session.scalar(select(func.count(Model.id))) or 0
     records = (
         session.execute(
@@ -243,25 +139,6 @@ def create_model(
         vocab_size = vocabulary.vocab_size
         tokenizer_id = vocabulary.id
         config_data["vocabulary_name"] = vocabulary.name
-    elif payload.dataset_id:
-        ds = session.get(Dataset, payload.dataset_id)
-        if not ds:
-            raise ApiError(
-                400, "invalid_vocabulary", "The selected vocabulary dataset does not exist."
-            )
-        prep = ds.config.get("prepared", {})
-        if not prep.get("ready") or not prep.get("vocab_size"):
-            msg = (
-                f"Dataset '{ds.name}' has not been prepared yet. "
-                "Prepare it before creating a model."
-            )
-            raise ApiError(400, "invalid_vocabulary", msg)
-        vocab_size = int(prep["vocab_size"])
-        # Preserve vocabulary association using existing config pattern
-        config_data["dataset_id"] = str(ds.id)
-        config_data["dataset_name"] = ds.name
-        config_data["vocabulary_source"] = "prepared_dataset"
-        config_data["vocab_size"] = vocab_size
 
     shape_error = explain_shape_error(
         n_layer=payload.n_layer,
@@ -292,7 +169,6 @@ def create_model(
         id=uuid.uuid4(),
         name=payload.name.strip(),
         description=payload.description.strip(),
-        preset=payload.preset,
         n_layer=payload.n_layer,
         d_model=payload.d_model,
         n_head=payload.n_head,
@@ -379,6 +255,9 @@ def delete_model(
         raise ApiError(409, "model_in_use", msg)
 
     folder = get_settings().data_dir / model.artifact_uri if model.artifact_uri else None
+    unload_models(model_id)
+    # its fine-tunes keep working, they just lose the link back
+    session.execute(update(Model).where(Model.parent_id == model_id).values(parent_id=None))
     try:
         session.delete(model)
         session.commit()

@@ -1,35 +1,9 @@
 from fastapi import APIRouter
 
 from forge import gpu
-from forge.schemas import GpuCard, GpuCheck, PresetMemory, PresetOut
-from forge.train.presets import PRESETS, count_params, training_memory
+from forge.schemas import GpuCard, GpuCheck
 
 router = APIRouter(tags=["training"])
-
-SEQUENCES_PER_STEP = (1, 2, 4, 8, 16)
-
-
-@router.get("/presets", response_model=list[PresetOut])
-def list_presets() -> list[PresetOut]:
-    return [
-        PresetOut(
-            name=name,
-            n_layer=config.n_layer,
-            d_model=config.d_model,
-            n_head=config.n_head,
-            ctx_len=config.ctx_len,
-            vocab_size=config.vocab_size,
-            parameters=count_params(config),
-            memory=[
-                PresetMemory(
-                    sequences_per_step=sequences,
-                    bytes=sum(training_memory(config, micro_batch_seqs=sequences).values()),
-                )
-                for sequences in SEQUENCES_PER_STEP
-            ],
-        )
-        for name, config in PRESETS.items()
-    ]
 
 
 @router.get("/gpu", response_model=GpuCheck)

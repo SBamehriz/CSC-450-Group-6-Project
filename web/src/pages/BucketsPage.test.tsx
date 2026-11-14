@@ -18,6 +18,7 @@ const notes = {
   id: 'notes',
   name: 'Class notes',
   description: 'A website',
+  kind: 'chat',
   stats: { ...bucket.stats, documents: 3, parsed_documents: 1 },
 };
 beforeEach(() => {
@@ -40,12 +41,19 @@ it('searches source notes, filters eligibility, switches view, and clears no mat
   expect(screen.getAllByRole('article')).toHaveLength(3);
   fireEvent.change(screen.getByLabelText('Filter collections'), { target: { value: 'ready' } });
   expect(screen.getAllByRole('article')).toHaveLength(1);
-  expect(screen.getByRole('link', { name: 'Save snapshot →' }).getAttribute('href')).toBe(
-    '/datasets?bucket=bucket-1',
+  expect(screen.getByRole('link', { name: 'Train on this →' }).getAttribute('href')).toBe(
+    '/train?data=bucket-1',
   );
   fireEvent.click(screen.getByRole('button', { name: 'List' }));
   expect(screen.getAllByRole('row')).toHaveLength(2);
   expect(screen.getByRole('button', { name: 'List' }).getAttribute('aria-pressed')).toBe('true');
+});
+
+it('tags each collection as text or chat', async () => {
+  open(<BucketsPage />);
+  const card = await screen.findByRole('article', { name: notes.name });
+  expect(within(card).getByText('chat')).toBeTruthy();
+  expect(within(screen.getByRole('article', { name: bucket.name })).getByText('text')).toBeTruthy();
 });
 
 it('sorts by name and document count', async () => {

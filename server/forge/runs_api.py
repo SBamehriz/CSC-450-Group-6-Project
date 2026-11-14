@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
-from forge import jobs
+from forge import chat_api, jobs
 from forge.config import get_settings
 from forge.db import get_session
 from forge.errors import ApiError
@@ -48,6 +48,8 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
     build = session.get(DatasetBuild, run.build_id) if run.build_id else None
     job = _run_job(session, run.id)
     raw_settings = run.hyperparams.get("settings")
+    base = session.get(Model, model.parent_id) if model and model.parent_id else None
+    stage, stage_message = _stage(session, run, job)
 
     # Resolve BPB if recorded in metrics or associated BpbEvaluation
     bpb_val: float | None = None
@@ -85,6 +87,11 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
         settings=TrainSettings.model_validate(raw_settings) if raw_settings else None,
         job_id=job.id if job else None,
         job_status=job.status if job else None,
+        fine_tune=run.init_checkpoint_id is not None,
+        base_model_id=base.id if base else None,
+        base_model_name=base.name if base else None,
+        stage=stage,
+        stage_message=stage_message,
         id=run.id,
         name=run.name,
         model_id=run.model_id,
@@ -111,6 +118,27 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
         completed_at=run.completed_at,
         created_at=run.created_at,
     )
+
+
+def _stage(session: Session, run: Run, job: Job | None) -> tuple[str, str]:
+    if run.status == "completed":
+        return "finished", "Finished."
+    if run.status == "failed":
+        return "finished", run.error or "It stopped with a problem."
+    if run.status == "stopped":
+        return "finished", f"Stopped at step {run.current_step:,}."
+    if run.status == "running" or (job is not None and job.status == "running"):
+        return "training", f"Step {run.current_step:,} of {run.max_steps:,}."
+    # the snapshot, vocabulary and training set jobs POST /api/train lined up
+    for job_id in run.hyperparams.get("prepare_jobs", []):
+        step = session.get(Job, uuid.UUID(job_id))
+        if step is not None and step.status == "running":
+            said = step.progress.get("message")
+            return (
+                "preparing",
+                f"Getting the text ready: {said}." if said else "Getting the text ready.",
+            )
+    return "waiting", "Waiting for its turn."
 
 
 @router.get("/runs", response_model=Page[RunOut])
@@ -238,6 +266,8 @@ def _run_job(session: Session, run_id: uuid.UUID) -> Job | None:
 
 
 def _queue(session: Session, run: Run, resume: bool) -> Job:
+    # chat gives the graphics card back
+    chat_api.unload_models()
     job = jobs.enqueue_task(
         session, "train_run", {"run_id": str(run.id), "resume": resume, "target_name": run.name}
     )
@@ -510,7 +540,7 @@ def delete_run(
     active_jobs = (
         session.scalar(
             select(func.count(Job.id)).where(
-                Job.job_type == "training",
+                Job.job_type == "train_run",
                 Job.status == "running",
             )
         )
@@ -519,7 +549,7 @@ def delete_run(
     if active_jobs > 0:
         # Check payload if relevant
         jobs = (
-            session.execute(select(Job).where(Job.job_type == "training", Job.status == "running"))
+            session.execute(select(Job).where(Job.job_type == "train_run", Job.status == "running"))
             .scalars()
             .all()
         )

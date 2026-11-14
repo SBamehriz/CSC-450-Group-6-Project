@@ -178,7 +178,28 @@ def test_out_of_memory_says_what_to_change(client, training_set, monkeypatch):
 
     monkeypatch.setattr(trainer.GPT, "forward", too_big)
     run = make_run(client, make_model(client, training_set), training_set)
-    _fails_with(client, run, ["ran out of memory", "Sequences per pass to 2"])
+    _fails_with(client, run, ["ran out of memory", "even with one sequence per pass"])
+
+
+def test_out_of_memory_halves_the_pass_and_learns_the_same(client, db, training_set, monkeypatch):
+    model = make_model(client, training_set)
+    small = make_run(client, model, training_set, name="small passes", micro_batch_size=1)
+    assert train(client, small)["status"] == "completed"
+    real_forward = trainer.GPT.forward
+
+    def tight(self, idx, targets=None):
+        if self.training and idx.shape[0] > 1:
+            raise torch.cuda.OutOfMemoryError("CUDA out of memory.")
+        return real_forward(self, idx, targets)
+
+    monkeypatch.setattr(trainer.GPT, "forward", tight)
+    halved = make_run(client, model, training_set, name="halved")
+    done = train(client, halved)
+    assert done["status"] == "completed", done
+    assert done["metrics"]["micro_batch_size"] == 1
+    first, second = final_weights(db, small["id"]), final_weights(db, halved["id"])
+    for name in first:
+        assert torch.allclose(first[name], second[name], atol=1e-5), name
 
 
 def test_full_disk_keeps_no_half_written_save_point(client, training_set, monkeypatch, data_dir):

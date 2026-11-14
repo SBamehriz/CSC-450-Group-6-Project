@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import uuid
@@ -9,15 +10,16 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from forge import chatformat
 from forge.config import get_settings
 from forge.db import get_engine
 from forge.jobs import report
 from forge.models import Dataset, DatasetBuild, Tokenizer
 from forge.schemas import SplitStats
-from forge.snapshots import read_snapshot
+from forge.snapshots import read_snapshot, stored_ok
 
-MAX_SPLIT_BYTES = 2_000_000_000
-MAX_BUILD_TOKENS = 2_000_000_000
+# a training set has no size cap; free disk is the limit, with this much kept spare
+DISK_SPARE = 100_000_000
 MIN_VAL_TOKENS = 100_000
 SPLITS = ("train", "validation")
 
@@ -37,9 +39,7 @@ class Snapshot:
                 raise ValueError("The snapshot was removed. Choose another snapshot.")
             session.expunge(dataset)
         self.dataset = dataset
-        archive = get_settings().data_dir / "datasets" / f"{dataset.id}.zip"
-        expected = dataset.config.get("sha256")
-        if archive.is_file() and expected and _file_hash(archive) != expected:
+        if not stored_ok(dataset):
             raise ValueError("The snapshot is missing or its checksum changed. Build a new one.")
         folder = get_settings().data_dir / "datasets" / str(dataset.id)
         self.folder = folder if (folder / "manifest.json").is_file() else None
@@ -99,6 +99,14 @@ def _file_hash(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def _need_disk(folder: Path, size: int) -> None:
+    if shutil.disk_usage(folder).free < size + DISK_SPARE:
+        raise ValueError(
+            "There is not enough free disk space to save this training set. "
+            "Free some space, then retry."
+        )
+
+
 def _json_file(path: Path, value: dict) -> None:
     # Sorting removes Rust/Python hash-map iteration from the artifact bytes.
     path.write_bytes(
@@ -132,7 +140,7 @@ def train_tokenizer(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) 
     tokenizer.decoder = decoders.ByteLevel()
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
-        special_tokens=["<|eos|>"],
+        special_tokens=list(chatformat.SPECIAL_TOKENS),
         initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
         show_progress=False,
     )
@@ -140,6 +148,8 @@ def train_tokenizer(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) 
     report(job_id, total, total, "Saving vocabulary")
     if tokenizer.token_to_id("<|eos|>") != 0:
         raise ValueError("The vocabulary did not reserve token 0 for document boundaries.")
+    if any(tokenizer.token_to_id(mark) != i for i, mark in enumerate(chatformat.SPECIAL_TOKENS)):
+        raise ValueError("The vocabulary did not reserve tokens 1 to 4 for conversations.")
     _json_file(destination / "tokenizer.json", json.loads(tokenizer.to_str()))
     return {
         "vocab_size": tokenizer.get_vocab_size(),
@@ -173,6 +183,8 @@ def build_dataset(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) ->
     total_docs = sum(snapshot.counts.values())
     completed = total_tokens = 0
     stats, manifest_splits = {}, {}
+    # about two bytes for every four characters; each write is checked again below
+    _need_disk(destination, (dataset.char_count or 0) // 2)
     for split in SPLITS:
         counts = SplitStats()
         entries = []
@@ -188,8 +200,7 @@ def build_dataset(job_id: uuid.UUID, target_id: uuid.UUID, destination: Path) ->
             ]
             ids.append(0)
             total_tokens += len(ids)
-            if total_tokens > MAX_BUILD_TOKENS or (counts.tokens + len(ids)) * 2 > MAX_SPLIT_BYTES:
-                raise ValueError("This training set is too large. Use a smaller snapshot.")
+            _need_disk(destination, len(ids) * 2)
             tokens = array("H", ids)
             if sys.byteorder != "little":
                 tokens.byteswap()

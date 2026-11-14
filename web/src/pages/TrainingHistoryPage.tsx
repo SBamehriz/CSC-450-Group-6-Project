@@ -14,7 +14,7 @@ import {
   Notice,
   type Tone,
 } from '../components/ui';
-import NewRunForm from '../components/NewRunForm';
+import TrainPlanner from '../components/TrainPlanner';
 import { compactNumber, plural, relativeDate } from '../lib/format';
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -69,10 +69,10 @@ export default function TrainingHistoryPage() {
     <>
       <div className="overview-heading page-intro">
         <div>
-          <h1 className="h1">Training History</h1>
+          <h1 className="h1">Train</h1>
           <p className="lede">
-            Track and review small language model training runs. Inspect loss curves, validation
-            performance, and training metrics over time.
+            Pick a collection and a size or a time. Forge plans the rest, says why, and lets you
+            change anything. Your training runs are listed below.
           </p>
         </div>
         <ExplainToggle checked={explain} onChange={setExplain} />
@@ -97,7 +97,7 @@ export default function TrainingHistoryPage() {
         </div>
       ) : null}
 
-      <NewRunForm />
+      <TrainPlanner />
 
       <div className="collection-toolbar">
         <select

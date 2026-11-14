@@ -15,7 +15,8 @@ from forge.schemas import (
     SpeedTestCreate,
     SpeedTestOut,
 )
-from forge.train.presets import PRESETS, ModelConfig, count_params, training_memory
+from forge.train.presets import ModelConfig, count_params, training_memory
+from forge.train.speed import STANDARD
 
 router = APIRouter(tags=["measuring"])
 
@@ -26,13 +27,10 @@ BUDGET_SHARE = 0.9
 PASS_SIZES = (64, 32, 16, 8, 4, 2, 1)
 
 
-def _config(preset: str | None, shape: ShapeIn | None) -> ModelConfig:
-    if preset:
-        if preset not in PRESETS:
-            raise ApiError(404, "not_found", f"There is no size called {preset!r}.")
-        return PRESETS[preset]
+def _config(shape: ShapeIn | None) -> ModelConfig:
     if shape is None:
-        raise ApiError(422, "invalid_shape", "Choose a size or give a shape.")
+        # a standard small model
+        return ModelConfig(**STANDARD)
     try:
         return ModelConfig(**shape.model_dump())
     except ValueError as problem:
@@ -56,13 +54,12 @@ def work_per_token(config: ModelConfig) -> float:
 
 @router.post("/speed-tests", response_model=JobOut, status_code=202)
 def start_speed_test(payload: SpeedTestCreate, session: Session = Depends(get_session)) -> JobOut:
-    config = _config(payload.preset, payload.shape)
-    label = payload.preset or f"{count_params(config) / 1e6:.1f}M"
+    config = _config(payload.shape)
+    label = f"{count_params(config) / 1e6:.1f}M"
     return queue_task(
         session,
         "speed_test",
         {
-            "preset": payload.preset,
             "shape": _shape(config),
             "sequences_per_step": payload.sequences_per_step,
             "device": payload.device,
@@ -84,7 +81,7 @@ def _free_bytes() -> int | None:
 
 @router.post("/estimate", response_model=EstimateOut)
 def estimate(payload: EstimateRequest, session: Session = Depends(get_session)) -> EstimateOut:
-    config = _config(payload.preset, payload.shape)
+    config = _config(payload.shape)
     shape = _shape(config)
     tests = list(session.scalars(select(SpeedTest).order_by(SpeedTest.created_at.desc())))
     exact = next(

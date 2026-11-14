@@ -112,7 +112,10 @@ export default function BucketDetailPage() {
 
       <div className="overview-heading page-intro">
         <div>
-          <h1 className="h1">{bucket.data.name}</h1>
+          <h1 className="h1">
+            {bucket.data.name}
+            <span className="tag">{bucket.data.kind}</span>
+          </h1>
           <p className="lede">
             {bucket.data.description ? `${bucket.data.description} ` : ''}
             {plural(stats.documents, 'document')}, {compactNumber(stats.chars)} characters, about{' '}
@@ -125,20 +128,18 @@ export default function BucketDetailPage() {
         <div className="help-panel">
           <p>
             Parsed means the file was read. Quality flags are hints, so check the cleaned text
-            before using it. A snapshot includes every parsed file, even if it has flags.
+            before using it. Training uses every parsed file, even if it has flags.
           </p>
           <p>
-            Reject keeps a file in this collection but leaves it out of future snapshots. Moving or
-            deleting a file does not change a snapshot you already saved.
+            Reject keeps a file in this collection but leaves it out of future training. Moving or
+            deleting a file does not change a model you already trained.
           </p>
         </div>
       ) : null}
       <div className="collection-summary">
         <span>{plural(stats.parsed_documents, 'parsed document')}</span>
         <span>{stats.documents - stats.parsed_documents} not parsed</span>
-        <Link to={`/datasets?bucket=${encodeURIComponent(bucketId)}`}>
-          Create a snapshot from this bucket →
-        </Link>
+        <Link to={`/train?data=${encodeURIComponent(bucketId)}`}>Train on this →</Link>
       </div>
 
       {bucket.data.source_dataset ? (
@@ -147,8 +148,9 @@ export default function BucketDetailPage() {
             <strong>Hugging Face source:</strong> {bucket.data.source_dataset} &bull; config:{' '}
             <code>{bucket.data.dataset_config}</code> &bull; split:{' '}
             <code>{bucket.data.dataset_split}</code> &bull; column:{' '}
-            <code>{bucket.data.text_column}</code> &bull; limit: {bucket.data.import_limit} &bull;{' '}
-            revision: <code>{bucket.data.resolved_revision?.slice(0, 7)}</code>
+            <code>{bucket.data.text_column}</code> &bull; rows:{' '}
+            {bucket.data.import_limit ?? 'the whole split'} &bull; revision:{' '}
+            <code>{bucket.data.resolved_revision?.slice(0, 7)}</code>
           </p>
         </div>
       ) : null}
@@ -560,7 +562,7 @@ function DocumentPanel({
                   </button>
                 </div>
               ) : (
-                <p className="hint">Rejected files stay out of future snapshots.</p>
+                <p className="hint">Rejected files stay out of future training.</p>
               )}
               <div className="delete-file">
                 <p className="hint">Delete removes this document and its stored files.</p>

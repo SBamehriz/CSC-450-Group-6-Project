@@ -57,7 +57,7 @@ export default function BucketsPage() {
         <h1 className="h1">Collections</h1>
         <p className="lede">
           Give each source of text its own home. Add files, check their text, and choose a source
-          for your next snapshot.
+          for your next model.
         </p>
       </div>
       <NewCollection onCreated={refresh} />
@@ -98,7 +98,7 @@ export default function BucketsPage() {
               onChange={(event) => setFilter(event.target.value)}
             >
               <option value="all">All collections</option>
-              <option value="ready">Ready for a snapshot</option>
+              <option value="ready">Ready to train</option>
               <option value="empty">No files yet</option>
             </select>
             <select
@@ -181,6 +181,7 @@ export default function BucketsPage() {
                       <tr key={bucket.id}>
                         <td className="name">
                           <Link to={`/data/${bucket.id}`}>{bucket.name}</Link>
+                          <span className="tag">{bucket.kind}</span>
                           <p className="muted table-note">
                             {bucket.description || 'No source note yet.'}
                           </p>
@@ -295,7 +296,7 @@ function CollectionCard({
         <Icon name="data" />
         <Chip tone={ready ? 'ok' : 'idle'}>
           {ready
-            ? 'Ready for a snapshot'
+            ? 'Ready to train'
             : bucket.id === 'large'
               ? 'Over snapshot limit'
               : bucket.stats.documents
@@ -305,6 +306,7 @@ function CollectionCard({
       </div>
       <h2 className="h2">
         <Link to={`/data/${bucket.id}`}>{bucket.name}</Link>
+        <span className="tag">{bucket.kind}</span>
       </h2>
       <p className="muted collection-description">{bucket.description || 'No source note yet.'}</p>
       <dl className="collection-counts">
@@ -339,7 +341,7 @@ function CollectionCard({
           {bucket.stats.documents ? 'Review files' : 'Add files'}
         </Link>
         {ready ? (
-          <Link to={`/datasets?bucket=${encodeURIComponent(bucket.id)}`}>Save snapshot →</Link>
+          <Link to={`/train?data=${encodeURIComponent(bucket.id)}`}>Train on this →</Link>
         ) : bucket.stats.documents === 0 ? (
           <ConfirmButton
             label="Delete"

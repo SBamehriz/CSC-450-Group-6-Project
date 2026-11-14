@@ -13,7 +13,4 @@ web/dist/
 
 forge-data/
 
-scripts/.spike-cache/
 *.pt
-spike-results*.json
-!spike-results-gpu.json

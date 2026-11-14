@@ -1,4 +1,5 @@
 import argparse
+import re
 import signal
 import sys
 import time
@@ -12,14 +13,22 @@ from forge import gpu
 from forge.config import get_settings
 from forge.db import get_engine
 from forge.errors import ApiError
-from forge.models import DatasetBuild, Job, Model, Run, Tokenizer
-from forge.schemas import EstimateRequest, RunCreate, SpeedTestCreate
-from forge.train.presets import PRESETS
+from forge.models import Bucket, DatasetBuild, Job, Model, Run, Tokenizer
+from forge.schemas import (
+    EstimateRequest,
+    PlanRequest,
+    RunCreate,
+    ShapeIn,
+    SpeedTestCreate,
+    TrainCreate,
+)
 from forge.train.settings import TrainSettings
 
 SUMMARY = "Train from a terminal, for a GPU with no browser (a lab machine, a job queue)."
 POLL_S = 2.0
+EVERY_S = 30.0
 ACTIVE = ("pending", "running")
+SIZE = re.compile(r"^\s*([0-9]*\.?[0-9]+(?:e[0-9]+)?)\s*([kmb]?)\s*$", re.I)
 
 
 class Problem(Exception):
@@ -35,6 +44,15 @@ def _api(call: Callable, *args):
         return call(*args)
     except ApiError as problem:
         raise Problem(problem.message) from problem
+
+
+def size(text: str) -> int:
+    """A number of parameters such as 10M, 1.5B or 500k."""
+    found = SIZE.match(text)
+    if not found:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a size. Write it like 10M or 1.5B.")
+    scale = {"": 1, "k": 1e3, "m": 1e6, "b": 1e9}[found.group(2).lower()]
+    return int(float(found.group(1)) * scale)
 
 
 def _find(session: Session, table, text: str, what: str):
@@ -122,12 +140,19 @@ def _wait_job(job_id: uuid.UUID) -> Job:
 def cmd_speed_test(args: argparse.Namespace) -> None:
     from forge.measure_api import start_speed_test
 
-    payload = SpeedTestCreate(
-        preset=args.size, sequences_per_step=args.sequences, device=args.device
-    )
+    shape = None
+    if args.layers:
+        shape = ShapeIn(
+            n_layer=args.layers,
+            d_model=args.width,
+            n_head=args.heads,
+            ctx_len=args.context,
+            vocab_size=args.vocab,
+        )
+    payload = SpeedTestCreate(shape=shape, sequences_per_step=args.sequences, device=args.device)
     with _session() as session:
         job = _api(start_speed_test, payload, session)
-    print(f"Timing {args.size} with {args.sequences} sequences per step...", flush=True)
+    print(f"Timing {args.sequences} sequences per step...", flush=True)
     done = _wait_job(job.id)
     if done.status != "completed":
         raise Problem(done.error or f"The speed test {done.status}.")
@@ -140,9 +165,11 @@ def cmd_speed_test(args: argparse.Namespace) -> None:
 
 def cmd_budget(args: argparse.Namespace) -> None:
     from forge.measure_api import BUDGET_SHARE, estimate
+    from forge.train.plan import SHAPE_KEYS, shape_for
 
+    config = shape_for(args.params)
     request = EstimateRequest(
-        preset=args.size,
+        shape=ShapeIn(**{key: getattr(config, key) for key in SHAPE_KEYS}),
         train_tokens=1,
         sequences_per_step=args.sequences,
         budget_hours=args.hours,
@@ -150,7 +177,7 @@ def cmd_budget(args: argparse.Namespace) -> None:
     with _session() as session:
         out = _api(estimate, request, session)
     if out.tokens_per_sec is None or out.budget_tokens is None:
-        raise Problem(f"Run `forge speed-test --size {args.size}` on this computer first.")
+        raise Problem("Run `forge speed-test` on this computer first.")
     where = {
         "measured": f"measured on {out.device_name}",
         "scaled": f"scaled from a speed test of another size on {out.device_name}",
@@ -192,8 +219,13 @@ def _settings(args: argparse.Namespace) -> TrainSettings:
 def _create(session: Session, args: argparse.Namespace, name: str) -> Run:
     from forge.runs_api import create_run
 
+    if getattr(args, "data", None):
+        return _create_from_collection(session, args, name)
     if not args.model or not args.set:
-        raise Problem(f"There is no run called {name!r} yet. Give --model and --set to make it.")
+        raise Problem(
+            f"There is no run called {name!r} yet. Give --model and --set to make it, or --data "
+            "to make it from a collection."
+        )
     model = _find(session, Model, args.model, "model")
     build = _find(session, DatasetBuild, args.set, "training set")
     payload = RunCreate(
@@ -208,6 +240,64 @@ def _create(session: Session, args: argparse.Namespace, name: str) -> Run:
     out = _api(create_run, payload, session)
     print(f"Made the run {name!r}: {out.max_steps:,} steps.", flush=True)
     return _find(session, Run, str(out.id), "run")
+
+
+def _create_from_collection(session: Session, args: argparse.Namespace, name: str) -> Run:
+    """The planner sizes it, then the same steps as POST /api/train line it up."""
+    from forge.plan_api import start_training
+    from forge.train.plan import plan
+
+    bucket = _find(session, Bucket, args.data, "collection")
+    base = _find(session, Model, args.base, "model") if args.base else None
+    chosen = {
+        "parameters": args.params,
+        "hours": args.hours,
+        "train_tokens": args.tokens,
+        "batch_size": args.batch,
+        "learning_rate": args.lr,
+    }
+    changes = {
+        key: value
+        for key, value in (
+            ("max_steps", args.steps),
+            ("micro_batch_size", args.micro),
+            ("eval_every", args.eval_every),
+            ("save_every", args.save_every),
+        )
+        if value is not None
+    }
+    try:
+        request = PlanRequest(
+            bucket_id=bucket.id,
+            base_model_id=base.id if base else None,
+            device=args.device,
+            **{key: value for key, value in chosen.items() if value is not None},
+        )
+        out = plan(session, request)
+        settings = TrainSettings.model_validate({**out.settings.model_dump(), **changes})
+        payload = TrainCreate(
+            name=name,
+            bucket_id=bucket.id,
+            base_model_id=request.base_model_id,
+            shape=None if out.fine_tune else out.shape,
+            dropout=out.dropout,
+            settings=settings,
+            seed=args.seed,
+            device=args.device,
+        )
+    except ValueError as problem:
+        raise Problem(str(problem).splitlines()[-1].strip()) from problem
+    for line in out.warnings:
+        print(f"Note: {line}")
+    if out.blockers:
+        raise Problem(out.blockers[0])
+    kind = "fine-tune" if out.fine_tune else "new model"
+    print(
+        f"Making the run {name!r}: a {kind} of {out.parameters / 1e6:.1f}M parameters, "
+        f"{settings.max_steps:,} steps. The text is made ready first.",
+        flush=True,
+    )
+    return _api(start_training, session, payload)
 
 
 def _begin(session: Session, run: Run) -> None:
@@ -293,7 +383,8 @@ def cmd_train(args: argparse.Namespace) -> None:
         if len(existing) > 1:
             raise Problem(f"More than one run is called {args.name!r}. Rename one in the app.")
         run = existing[0] if existing else _create(session, args, args.name)
-        _begin(session, run)
+        if existing or not args.data:
+            _begin(session, run)
         run_id = run.id
     stop_after = args.stop_after * 3600 if args.stop_after else None
     _report(_follow(run_id, stop_after))
@@ -350,6 +441,11 @@ def _train_flags(page: argparse.ArgumentParser, sweep: bool = False) -> None:
         length.add_argument("--steps", type=int, help="or how many steps")
         page.add_argument("--batch", type=int, help="sequences per step (default 16)")
         page.add_argument("--lr", type=float, help="peak learning rate (default 6e-4)")
+        page.add_argument("--data", help="or the collection to train on, by name or id")
+        page.add_argument("--base", help="with --data: fine-tune this model, by name or id")
+        sized = page.add_mutually_exclusive_group()
+        sized.add_argument("--params", type=size, help="with --data: model size, like 10M")
+        sized.add_argument("--hours", type=float, help="with --data: or the hours you have")
     else:
         page.add_argument("--steps", type=int, default=300, help="steps per run (default 300)")
         page.add_argument("--lr", default="3e-4,6e-4,1e-3", help="learning rates, commas")
@@ -371,14 +467,17 @@ def build_parser() -> argparse.ArgumentParser:
     page = commands.add_parser("list", help="models, training sets and runs")
     page.add_argument("what", nargs="?", choices=("models", "sets", "runs", "all"), default="all")
 
-    sizes = sorted(PRESETS)
-    page = commands.add_parser("speed-test", help="time a size on this computer")
-    page.add_argument("--size", choices=sizes, required=True)
+    page = commands.add_parser("speed-test", help="time a shape on this computer")
+    page.add_argument("--layers", type=int, help="with --width, --heads, --context, --vocab")
+    page.add_argument("--width", type=int, default=384)
+    page.add_argument("--heads", type=int, default=6)
+    page.add_argument("--context", type=int, default=512)
+    page.add_argument("--vocab", type=int, default=8192)
     page.add_argument("--sequences", type=int, default=4, help="sequences per step (default 4)")
     page.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
 
     page = commands.add_parser("budget", help="word pieces that fit in your hours")
-    page.add_argument("--size", choices=sizes, required=True)
+    page.add_argument("--params", type=size, required=True, help="model size, like 10M")
     page.add_argument("--hours", type=float, required=True)
     page.add_argument("--sequences", type=int, default=4, help="sequences per step (default 4)")
 

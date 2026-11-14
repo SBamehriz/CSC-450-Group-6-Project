@@ -11,7 +11,7 @@ export default function DataSteps({ buckets, stats }: { buckets: Bucket[]; stats
   const review = source ?? buckets.find((bucket) => bucket.stats.documents > 0);
   return (
     <Card>
-      <CardHead title="From files to a dataset" end={<span className="muted">Three steps</span>} />
+      <CardHead title="From files to a model" end={<span className="muted">Three steps</span>} />
       <ol className="workflow">
         <li>
           <span className="step-number">1</span>
@@ -44,19 +44,11 @@ export default function DataSteps({ buckets, stats }: { buckets: Bucket[]; stats
         <li>
           <span className="step-number">3</span>
           <div>
-            <span className="step-state">
-              {stats.ready_snapshots
-                ? `${plural(stats.ready_snapshots, 'snapshot')} saved`
-                : source
-                  ? 'Ready to build'
-                  : 'Needs more text'}
-            </span>
-            <h3>Save a snapshot</h3>
-            <p>Freeze one source into train and validation files.</p>
+            <span className="step-state">{source ? 'Ready to train' : 'Needs more text'}</span>
+            <h3>Train a model</h3>
+            <p>Train one on a collection, then fine-tune it and chat with it.</p>
             {source ? (
-              <Link to={`/datasets?bucket=${encodeURIComponent(source.id)}`}>
-                Create a snapshot →
-              </Link>
+              <Link to={`/train?data=${encodeURIComponent(source.id)}`}>Train on this →</Link>
             ) : (
               <span className="muted">One collection needs 2 to 1,000 parsed documents.</span>
             )}

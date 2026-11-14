@@ -23,6 +23,7 @@ EXTRAS = (
     "tokenizer.json",
     "tokenizer_config.json",
     "special_tokens_map.json",
+    "chat_template.jinja",
 )
 # room left on the disk afterwards, so the computer keeps working
 DISK_MARGIN = 1_000_000_000
@@ -178,6 +179,15 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def has_chat_template(folder: Path) -> bool:
+    if (folder / "chat_template.jinja").is_file():
+        return True
+    config = folder / "tokenizer_config.json"
+    if not config.is_file():
+        return False
+    return bool(json.loads(config.read_text(encoding="utf-8")).get("chat_template"))
+
+
 def _free_name(session: Session, wanted: str) -> str:
     name, number = wanted, 2
     while session.scalar(select(Model.id).where(Model.name == name)):
@@ -224,6 +234,7 @@ def run(job_id: uuid.UUID) -> dict:
             name=_free_name(session, wanted_name),
             description=f"Imported from {planned['repo_id']}",
             preset=None,
+            chat=has_chat_template(destination),
             n_layer=shape["n_layer"],
             d_model=shape["d_model"],
             n_head=shape["n_head"],

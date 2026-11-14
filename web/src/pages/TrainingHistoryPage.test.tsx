@@ -31,6 +31,9 @@ const mockRuns: Run[] = [
     metrics: {},
     hyperparams: {},
     error: null,
+    fine_tune: false,
+    stage: 'training',
+    stage_message: '',
     started_at: '2026-10-23T10:00:00Z',
     completed_at: '2026-10-23T10:30:00Z',
     created_at: '2026-10-23T10:00:00Z',
@@ -58,6 +61,9 @@ const mockRuns: Run[] = [
     metrics: {},
     hyperparams: {},
     error: null,
+    fine_tune: false,
+    stage: 'training',
+    stage_message: '',
     started_at: null,
     completed_at: null,
     created_at: '2026-10-23T09:00:00Z',
@@ -67,8 +73,8 @@ const mockRuns: Run[] = [
 beforeEach(() => {
   vi.spyOn(api, 'listRuns').mockResolvedValue({ items: mockRuns, total: 2 });
   vi.spyOn(api, 'listAllModels').mockResolvedValue({ items: [], total: 0 });
-  vi.spyOn(api, 'listBuilds').mockResolvedValue({ items: [], total: 0 });
-  vi.spyOn(api, 'listTokenizers').mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, 'listBuckets').mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, 'plan').mockRejectedValue(new Error('Not planned in this test.'));
 });
 
 afterEach(() => {

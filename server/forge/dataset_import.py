@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import json
 import logging
@@ -9,15 +10,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Generator
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from forge import chatformat
 from forge.config import get_settings
 from forge.db import get_engine
 from forge.errors import ApiError
-from forge.ingest import clean
+from forge.ingest import clean, normalise
 from forge.jobs import Canceled, report
 from forge.models import Bucket, Document, Job
 from forge.schemas import (
@@ -35,6 +38,28 @@ BATCH_SIZE = 100
 TARGET_FILES = 2_000
 DOWNLOAD_CHUNK = 1 << 20
 ROWS_RETRIES = 6
+# rows per file when the size of the split is unknown, and the most text one file holds
+PACK_ROWS = 20_000
+PACK_CHARS = 32_000_000
+# after this many values, stop if most of them could not be used
+CHECK_ROWS = 2_000
+TRIES = 4
+WAIT = 2.0
+READABLE = (".parquet", ".jsonl", ".jsonl.gz")
+# the words a file's path is sorted into splits by when the card names none
+SPLIT_WORDS = {
+    "train": "train",
+    "training": "train",
+    "validation": "validation",
+    "valid": "validation",
+    "val": "validation",
+    "dev": "validation",
+    "test": "test",
+    "testing": "test",
+    "eval": "test",
+}
+RESOLVE = re.compile(r"https://huggingface\.co/datasets/(.+?)/resolve/([^/]+)/(.+)")
+
 
 class NoParquetCopy(RuntimeError):
     """The hub has no Parquet copy of this split, so rows come 100 at a time."""
@@ -168,17 +193,15 @@ def inspect_dataset(dataset_input: str) -> HfInspectResponse:
             features = details.get("features", {})
             columns: list[str] = []
             text_columns: list[str] = []
+            chat_columns: list[str] = []
             if isinstance(features, dict):
                 for f_name, f_type in features.items():
                     columns.append(f_name)
-                    if isinstance(f_type, dict) and f_type.get("dtype") == "string":
+                    use = column_use(f_type)
+                    if use == "text":
                         text_columns.append(f_name)
-                    elif f_type == "string":
-                        text_columns.append(f_name)
-
-            if not text_columns:
-                # If no explicit string dtype detected, include all columns as candidates
-                text_columns = list(columns)
+                    elif use == "chat":
+                        chat_columns.append(f_name)
 
             configs_list.append(
                 HfConfigInfo(
@@ -186,6 +209,7 @@ def inspect_dataset(dataset_input: str) -> HfInspectResponse:
                     splits=splits,
                     columns=columns,
                     text_columns=text_columns,
+                    chat_columns=chat_columns,
                 )
             )
 
@@ -216,6 +240,7 @@ def inspect_dataset(dataset_input: str) -> HfInspectResponse:
             splits = [HfSplitInfo(name=sn) for sn in split_names]
             columns: list[str] = []
             text_columns: list[str] = []
+            chat_columns: list[str] = []
 
             # Sample first split to extract column names
             if split_names:
@@ -233,14 +258,13 @@ def inspect_dataset(dataset_input: str) -> HfInspectResponse:
                             fname = feat.get("name")
                             if fname:
                                 columns.append(fname)
-                                ftype = feat.get("type")
-                                if isinstance(ftype, dict) and ftype.get("dtype") == "string":
+                                use = column_use(feat.get("type"))
+                                if use == "text":
                                     text_columns.append(fname)
+                                elif use == "chat":
+                                    chat_columns.append(fname)
                 except Exception as problem:
                     log.warning("Could not sample rows for columns: %s", problem)
-
-            if not text_columns and columns:
-                text_columns = list(columns)
 
             configs_list.append(
                 HfConfigInfo(
@@ -248,6 +272,7 @@ def inspect_dataset(dataset_input: str) -> HfInspectResponse:
                     splits=splits,
                     columns=columns,
                     text_columns=text_columns,
+                    chat_columns=chat_columns,
                 )
             )
 
@@ -277,11 +302,45 @@ def _write_file(relative: str, data: bytes) -> str:
     return relative
 
 
+def column_use(feature: object) -> str | None:
+    """Says "text" for a column of strings, "chat" for a list of role and content turns."""
+    if feature in ("string", "large_string"):
+        return "text"
+    if isinstance(feature, dict):
+        if feature.get("dtype") in ("string", "large_string"):
+            return "text"
+        if feature.get("_type") not in ("List", "LargeList", "Sequence"):
+            return None
+        feature = [feature.get("feature")]
+    if isinstance(feature, list) and len(feature) == 1 and isinstance(feature[0], dict):
+        return "chat" if {"role", "content"} <= set(feature[0]) else None
+    return None
+
+
+def kind_problem(session: Session, bucket: Bucket, use: str | None) -> str | None:
+    """Why rows of this kind cannot go into this collection, or None. An empty one takes any."""
+    if use is None or bucket.kind == use:
+        return None
+    # a file that failed holds no text, so it does not count
+    kept = select(Document.id).where(Document.bucket_id == bucket.id, Document.status == "parsed")
+    if session.scalar(kept.limit(1)) is None:
+        return None
+    if use == "chat":
+        return (
+            "This collection already holds plain text, so conversations cannot go in it. "
+            "Put them in a new or empty collection."
+        )
+    return (
+        "This collection holds conversations, so plain text cannot go in it. "
+        "Put it in a new or empty collection."
+    )
+
+
 def validate_import_params(
     canonical_id: str,
     payload: DatasetImportCreate,
-) -> None:
-    """Validate requested config, split, and text_column against dataset schema."""
+) -> str:
+    """Validate requested config, split, and text_column; say whether it holds text or chat."""
     schema = inspect_dataset(canonical_id)
     matched_config = next((c for c in schema.configs if c.name == payload.config), None)
     if matched_config is None:
@@ -311,6 +370,20 @@ def validate_import_params(
             f"Column '{payload.text_column}' was not found. Available: {valid_cols}.",
         )
 
+    usable = matched_config.text_columns + matched_config.chat_columns
+    if payload.text_column not in usable:
+        choice = (
+            f"Pick one of: {', '.join(repr(col) for col in usable)}."
+            if usable
+            else "This part has no column of text or conversations."
+        )
+        raise ApiError(
+            400,
+            "column_not_text",
+            f"Column '{payload.text_column}' holds neither text nor conversations. {choice}",
+        )
+    return "chat" if payload.text_column in matched_config.chat_columns else "text"
+
 
 def import_dataset(job_id: uuid.UUID) -> None:
     """Execute the background dataset import job in bounded batches."""
@@ -328,10 +401,14 @@ def import_dataset(job_id: uuid.UUID) -> None:
         config = payload["config"]
         split = payload["split"]
         text_column = payload["text_column"]
-        import_limit = int(payload.get("limit", 500))
+        # None reads the whole split; "use" is "text" or "chat", None decides from the rows
+        import_limit = int(payload["limit"]) if payload.get("limit") else None
+        use = payload.get("use")
+        pinned = job.result.get("revision")
 
-    # Resolve and pin to immutable commit revision
+    # Resolve and pin to immutable commit revision; a retry keeps the first one
     canonical_id, resolved_revision = resolve_dataset(dataset_input)
+    resolved_revision = pinned or resolved_revision
 
     # Save pinned source metadata onto collection
     with Session(get_engine()) as session:
@@ -353,7 +430,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
             if cfg.name == config:
                 for sp in cfg.splits:
                     if sp.name == split and sp.num_examples is not None:
-                        total = min(import_limit, sp.num_examples)
+                        total = min(import_limit or sp.num_examples, sp.num_examples)
                         break
     except Exception as problem:
         log.warning("Could not determine total examples for %s: %s", canonical_id, problem)
@@ -363,6 +440,7 @@ def import_dataset(job_id: uuid.UUID) -> None:
     imported = 0
     skipped = 0
     failed = 0
+    repeats = 0
 
     report(
         job_id,
@@ -375,8 +453,13 @@ def import_dataset(job_id: uuid.UUID) -> None:
         failed=0,
     )
 
+    # the dataset's own files; the hub's converted copy only when it has none Forge reads
+    partial = False
     try:
-        urls = parquet_urls(canonical_id, config, split)
+        urls = data_file_urls(canonical_id, resolved_revision, config, split)
+        if not urls:
+            urls = parquet_urls(canonical_id, config, split)
+            partial = any("/partial-" in url for url in urls)
     except NoParquetCopy:
         log.info("%s has no Parquet copy, reading rows one request at a time", canonical_id)
     else:
@@ -391,18 +474,20 @@ def import_dataset(job_id: uuid.UUID) -> None:
             import_limit,
             total,
             urls,
+            use,
+            partial,
         )
         return
 
     offset = 0
-    while offset < import_limit:
+    while import_limit is None or offset < import_limit:
         # Check cancellation
         with Session(get_engine()) as session:
             chk_job = session.get(Job, job_id)
             if chk_job and chk_job.cancel_requested:
                 raise Canceled()
 
-        current_batch_size = min(BATCH_SIZE, import_limit - offset)
+        current_batch_size = min(BATCH_SIZE, (import_limit or offset + BATCH_SIZE) - offset)
         url = (
             f"{HF_DATASETS_SERVER}/rows?dataset={urllib.parse.quote(canonical_id)}"
             f"&config={urllib.parse.quote(config)}"
@@ -426,13 +511,16 @@ def import_dataset(job_id: uuid.UUID) -> None:
                     failed += 1
                     continue
 
-                raw_text = row_dict[text_column]
-                if raw_text is None or not isinstance(raw_text, str) or not raw_text.strip():
+                value = row_dict[text_column]
+                if use is None and value is not None:
+                    use = "chat" if isinstance(value, list) else "text"
+                raw_text, _why = _row_text(value, use)
+                if raw_text is None:
                     skipped += 1
                     continue
 
-                # Pass through standard cleaning
-                cleaned = clean(raw_text, encoding_suspect=False)
+                # imported rows get the light normalising only
+                cleaned = clean(normalise(raw_text), mode="none")
                 if not cleaned.text.strip():
                     skipped += 1
                     continue
@@ -446,11 +534,19 @@ def import_dataset(job_id: uuid.UUID) -> None:
                 ).scalar_one_or_none()
                 if twin is not None:
                     skipped += 1
+                    repeats += 1
                     continue
 
-                # Persist raw text and cleaned text
-                raw_bytes = raw_text.encode("utf-8")
-                raw_uri = _write_file(f"raw/{uuid.uuid4()}", raw_bytes)
+                bucket = session.get(Bucket, bucket_id)
+                problem = kind_problem(session, bucket, use) if bucket is not None else None
+                if problem:
+                    raise RuntimeError(problem)
+                if bucket is not None and use:
+                    bucket.kind = use
+
+                # one file: the raw copy is the cleaned text
+                doc_id = uuid.uuid4()
+                raw_uri = _write_file(f"text/{doc_id}.txt", cleaned.text.encode("utf-8"))
 
                 filename = f"hf_{config}_{split}_{row_idx:06d}.txt"
                 source_note = (
@@ -460,11 +556,13 @@ def import_dataset(job_id: uuid.UUID) -> None:
                 )
 
                 doc = Document(
+                    id=doc_id,
                     bucket_id=bucket_id,
                     filename=filename,
                     source_format="txt",
                     source_note=source_note,
                     raw_uri=raw_uri,
+                    text_uri=raw_uri,
                     status="parsed",
                     content_hash=cleaned.content_hash,
                     char_count=cleaned.char_count,
@@ -473,7 +571,6 @@ def import_dataset(job_id: uuid.UUID) -> None:
                 )
                 session.add(doc)
                 session.flush()
-                doc.text_uri = _write_file(f"text/{doc.id}.txt", cleaned.text.encode("utf-8"))
                 imported += 1
 
             session.commit()
@@ -506,6 +603,8 @@ def import_dataset(job_id: uuid.UUID) -> None:
         raise RuntimeError(
             f"No records found in dataset '{canonical_id}' config '{config}' split '{split}'."
         )
+    if imported == 0:
+        raise RuntimeError(_nothing_kept(text_column, repeats > 0))
 
     summary_msg = (
         f"Import complete: {imported} imported, {skipped} skipped, {failed} failed "
@@ -567,6 +666,214 @@ def parquet_urls(canonical_id: str, config: str, split: str) -> list[str]:
     return files
 
 
+# tests swap these two out
+def _hub_info(repo: str, revision: str):
+    from huggingface_hub import HfApi
+
+    return HfApi().dataset_info(repo, revision=revision)
+
+
+def _hub_download(repo: str, revision: str, path: str, folder: Path) -> Path:
+    from huggingface_hub import hf_hub_download
+
+    found = hf_hub_download(repo, path, repo_type="dataset", revision=revision, local_dir=folder)
+    return Path(found)
+
+
+def _pattern(glob: str) -> re.Pattern[str]:
+    # a card's data_files pattern: * and ? within a folder, ** across folders
+    found, at = [], 0
+    glob = glob.removeprefix("./")
+    while at < len(glob):
+        if glob.startswith("**/", at):
+            found.append("(?:.*/)?")
+            at += 3
+        elif glob.startswith("**", at):
+            found.append(".*")
+            at += 2
+        elif glob[at] in "*?":
+            found.append("[^/]*" if glob[at] == "*" else "[^/]")
+            at += 1
+        else:
+            found.append(re.escape(glob[at]))
+            at += 1
+    return re.compile("".join(found))
+
+
+def _globs(data_files: object) -> list[tuple[str, list[str]]]:
+    """(split, patterns) in any of the ways a card writes data_files. No split means train."""
+
+    def patterns(value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        return [one for one in value if isinstance(one, str)] if isinstance(value, list) else []
+
+    if isinstance(data_files, dict):
+        return [(str(split), patterns(value)) for split, value in data_files.items()]
+    if not isinstance(data_files, list):
+        return [("train", patterns(data_files))] if isinstance(data_files, str) else []
+    found = [("train", patterns(data_files))] if patterns(data_files) else []
+    for one in data_files:
+        if isinstance(one, dict):
+            found.append((str(one.get("split") or "train"), patterns(one.get("path"))))
+    return found
+
+
+def _by_name(files: list[str]) -> dict[str, list[str]]:
+    # the first split word in a path decides; anything else is train
+    splits: dict[str, list[str]] = {}
+    for path in files:
+        words = re.split(r"[-_./]", path.lower())
+        split = next((SPLIT_WORDS[word] for word in words if word in SPLIT_WORDS), "train")
+        splits.setdefault(split, []).append(path)
+    return splits
+
+
+def _layout(info) -> dict[str, dict[str, list[str]]]:
+    """Config, then split, then its readable files in name order."""
+    files = sorted(
+        one.rfilename for one in info.siblings or [] if one.rfilename.lower().endswith(READABLE)
+    )
+    card = info.card_data
+    configs = card.get("configs") if card is not None else None
+    if not isinstance(configs, list) or not configs:
+        return {"default": _by_name(files)} if files else {}
+    found: dict[str, dict[str, list[str]]] = {}
+    for config in configs:
+        if not isinstance(config, dict):
+            continue
+        name = str(config.get("config_name") or "default")
+        globs = _globs(config.get("data_files"))
+        if not globs:
+            found[name] = _by_name(files)
+            continue
+        splits = {}
+        for split, patterns in globs:
+            compiled = [_pattern(one) for one in patterns]
+            matched = [path for path in files if any(p.fullmatch(path) for p in compiled)]
+            if matched:
+                splits[split] = matched
+        found[name] = splits
+    return found
+
+
+def data_file_urls(canonical_id: str, revision: str, config: str, split: str) -> list[str]:
+    """Links to the dataset's own Parquet or JSON lines files for one split, in name order."""
+    from huggingface_hub.errors import GatedRepoError
+
+    try:
+        info = _hub_info(canonical_id, revision)
+    except GatedRepoError as err:
+        raise RuntimeError(
+            "This dataset asks you to accept its terms first. Accept them on its Hugging Face "
+            "page, sign in to Hugging Face on this computer, then try again."
+        ) from err
+    except Exception as err:
+        raise RuntimeError(f"Could not list the dataset's files on Hugging Face: {err}") from err
+    paths = _layout(info).get(config, {}).get(split, [])
+    base = f"https://huggingface.co/datasets/{canonical_id}/resolve/{revision}"
+    return [f"{base}/{urllib.parse.quote(path)}" for path in paths]
+
+
+def fetch(url: str, path: Path) -> None:
+    """Download one data file, trying a few times; a stopped download carries on from its part."""
+    from huggingface_hub.errors import (
+        EntryNotFoundError,
+        GatedRepoError,
+        LocalEntryNotFoundError,
+        RepositoryNotFoundError,
+    )
+
+    hub = RESOLVE.fullmatch(url)
+    problem: Exception | None = None
+    for attempt in range(TRIES):
+        try:
+            if hub is None:
+                download(url, path)
+                return
+            repo, revision, name = (urllib.parse.unquote(part) for part in hub.groups())
+            # the hub keeps a half done file in this folder and resumes it
+            os.replace(_hub_download(repo, revision, name, path.parent / "hub"), path)
+            return
+        except Exception as err:
+            # a local "not found" only means there was no connection
+            gone = isinstance(err, EntryNotFoundError | GatedRepoError | RepositoryNotFoundError)
+            if gone and not isinstance(err, LocalEntryNotFoundError):
+                raise RuntimeError(
+                    "Hugging Face no longer gives one of this dataset's files. Check the dataset's "
+                    "page, then start a new import."
+                ) from err
+            problem = err
+        if attempt + 1 < TRIES:
+            time.sleep(WAIT * 2**attempt)
+    raise RuntimeError(
+        f"Could not download a data file from Hugging Face after {TRIES} tries ({problem}). "
+        "Check the internet connection, then retry this job."
+    )
+
+
+def _suffix(url: str) -> str:
+    name = url.lower().split("?")[0]
+    return next((one for one in sorted(READABLE, key=len, reverse=True) if name.endswith(one)), "")
+
+
+def _values(path: Path, column: str, skip: int) -> Generator[list, None, None]:
+    """The column's values in batches, after the first `skip` rows of the file."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from pyarrow import json as pa_json
+
+    try:
+        if path.suffix != ".parquet":
+            options = pa_json.ReadOptions(block_size=1 << 24)
+            with pa.input_stream(str(path), compression="detect") as stream:
+                for batch in pa_json.open_json(stream, read_options=options):
+                    index = batch.schema.get_field_index(column)
+                    values = batch.column(index).to_pylist() if index >= 0 else [None] * len(batch)
+                    yield values[skip:]
+                    skip = max(0, skip - len(values))
+            return
+        with path.open("rb") as handle:
+            data = pq.ParquetFile(handle)
+            if column not in data.schema_arrow.names:
+                raise RuntimeError(f"Column '{column}' is not in the dataset's data files.")
+            first = 0
+            while first < data.num_row_groups and data.metadata.row_group(first).num_rows <= skip:
+                skip -= data.metadata.row_group(first).num_rows
+                first += 1
+            groups = list(range(first, data.num_row_groups))
+            if not groups:
+                return
+            for batch in data.iter_batches(10_000, row_groups=groups, columns=[column]):
+                values = batch.column(0).to_pylist()
+                yield values[skip:]
+                skip = max(0, skip - len(values))
+    except (pa.ArrowException, OSError, ValueError) as err:
+        raise RuntimeError(f"The data file {path.name} could not be read ({err}).") from err
+
+
+def _row_text(value: object, use: str | None) -> tuple[str | None, str]:
+    """A row's text, or None and "skipped" (empty) or "failed" (not text or not a conversation)."""
+    if value is None:
+        return None, "skipped"
+    if use == "chat":
+        if chatformat.problem(value) is not None:
+            return None, "failed"
+        return chatformat.render(value), ""  # type: ignore[arg-type]
+    if not isinstance(value, str):
+        return None, "failed"
+    text = value.strip()
+    return (text, "") if text else (None, "skipped")
+
+
+def _nothing_kept(column: str, repeats: bool) -> str:
+    if repeats:
+        return "Every row read is already in this collection, so nothing new was added."
+    return (
+        f"Nothing usable was found in the column '{column}'. Pick another column, then try again."
+    )
+
+
 def download(url: str, path: Path) -> None:
     """Stream one file to disk, so a large file never sits in memory."""
     request = urllib.request.Request(url, headers=get_hf_headers())
@@ -587,12 +894,14 @@ def _import_from_parquet(
     config: str,
     split: str,
     text_column: str,
-    limit: int,
+    limit: int | None,
     total: int,
     urls: list[str],
+    use: str | None = None,
+    partial: bool = False,
 ) -> None:
     try:
-        import pyarrow.parquet as pq
+        import pyarrow.parquet  # noqa: F401
     except ImportError as problem:
         raise RuntimeError(
             "Importing from Hugging Face needs pyarrow. Install the prepare extra from the "
@@ -600,28 +909,69 @@ def _import_from_parquet(
         ) from problem
 
     # a small import keeps one row per file; a big one groups rows evenly
-    rows_per_file = max(1, -(-limit // TARGET_FILES))
+    size = limit or total
+    rows_per_file = max(1, -(-size // TARGET_FILES)) if size else PACK_ROWS
     folder = get_settings().data_dir / "imports" / str(job_id)
-    shutil.rmtree(folder, ignore_errors=True)
-    folder.mkdir(parents=True)
-    total = total or limit
-    counts = {"processed": 0, "imported": 0, "skipped": 0, "failed": 0}
+    folder.mkdir(parents=True, exist_ok=True)
+    total = total or limit or 0
+    # a retry carries on from the place saved with the last file written
+    with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        saved = dict(job.result) if job is not None else {}
+    counts = {"processed": 0, "imported": 0, "skipped": 0, "failed": 0, **saved.get("counts", {})}
+    cursor = saved.get("cursor") or {"file": 0, "row": 0}
+    unusable = int(saved.get("unusable", 0))
+    # repeats are kept out within a file; a whole repeated file by its content hash
     seen: set[bytes] = set()
     pack: list[str] = []
-    first_row = 0
-    parts = 0
+    chars = 0
+    first_row = counts["processed"]
+    parts = int(saved.get("parts", 0))
 
     def say(message: str) -> None:
         report(job_id, completed=counts["processed"], total=total, message=message, **counts)
 
-    def write_pack() -> None:
-        nonlocal pack, first_row, parts
-        if not pack:
-            return
-        raw_text = "\n\n".join(pack)
-        cleaned = clean(raw_text, encoding_suspect=False)
+    def full() -> bool:
+        return limit is not None and counts["processed"] >= limit
+
+    def take(value: object) -> None:
+        nonlocal use, chars, unusable
+        counts["processed"] += 1
+        if use is None and value is not None:
+            use = "chat" if isinstance(value, list) else "text"
+        text, why = _row_text(value, use)
+        if text is None:
+            counts[why] += 1
+            unusable += 1
+        else:
+            digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
+            if digest in seen:
+                counts["skipped"] += 1
+            else:
+                seen.add(digest)
+                pack.append(text)
+                chars += len(text)
+        if counts["processed"] == CHECK_ROWS and unusable * 2 > CHECK_ROWS:
+            raise RuntimeError(
+                f"Most of the first {CHECK_ROWS:,} values in the column '{text_column}' could "
+                f"not be used ({unusable:,} were empty, not text or not a usable conversation). "
+                "Pick another column, then try again."
+            )
+
+    def write_pack(file_index: int, row: int) -> None:
+        """Save the pack as one document and the place to carry on from, in one commit."""
+        nonlocal pack, first_row, parts, seen, chars
         last_row = counts["processed"] - 1
+        joiner = f"{chatformat.EOS}\n" if use == "chat" else "\n\n"
+        # imported rows get the light normalising only, never drop_repeated_lines
+        cleaned = clean(normalise(joiner.join(pack)), mode="none")
         with Session(get_engine()) as session:
+            bucket = session.get(Bucket, bucket_id)
+            if bucket is None:
+                raise RuntimeError("The collection was deleted.")
+            problem = kind_problem(session, bucket, use) if pack else None
+            if problem:
+                raise RuntimeError(problem)
             twin = session.execute(
                 select(Document.id).where(
                     Document.bucket_id == bucket_id,
@@ -629,7 +979,11 @@ def _import_from_parquet(
                 )
             ).first()
             if twin is None and cleaned.text.strip():
+                # the same file gets the same name on a retry, so a file left by a stop is replaced
+                doc_id = uuid.uuid5(job_id, f"{file_index}:{row}")
+                uri = _write_file(f"text/{doc_id}.txt", cleaned.text.encode("utf-8"))
                 doc = Document(
+                    id=doc_id,
                     bucket_id=bucket_id,
                     filename=f"hf_{config}_{split}_part{parts:05d}.txt",
                     source_format="txt",
@@ -638,7 +992,8 @@ def _import_from_parquet(
                         f"config: {config}, split: {split}, rows {first_row} to {last_row}, "
                         f"{len(pack):,} rows in this file)"
                     ),
-                    raw_uri=_write_file(f"raw/{uuid.uuid4()}", raw_text.encode("utf-8")),
+                    raw_uri=uri,
+                    text_uri=uri,
                     status="parsed",
                     content_hash=cleaned.content_hash,
                     char_count=cleaned.char_count,
@@ -646,64 +1001,72 @@ def _import_from_parquet(
                     quality=cleaned.quality,
                 )
                 session.add(doc)
-                session.flush()
-                doc.text_uri = _write_file(f"text/{doc.id}.txt", cleaned.text.encode("utf-8"))
-                session.commit()
+                bucket.kind = use or bucket.kind
                 counts["imported"] += len(pack)
                 parts += 1
             else:
                 counts["skipped"] += len(pack)
-        pack, first_row = [], counts["processed"]
+            job = session.get(Job, job_id)
+            if job is not None:
+                job.result = {
+                    "revision": revision,
+                    "cursor": {"file": file_index, "row": row},
+                    "counts": dict(counts),
+                    "unusable": unusable,
+                    "parts": parts,
+                }
+            session.commit()
+        pack, seen, chars, first_row = [], set(), 0, counts["processed"]
 
     try:
-        for index, url in enumerate(urls):
-            if counts["processed"] >= limit:
+        for index in range(cursor["file"], len(urls)):
+            if full():
                 break
             say(f"Downloading data file {index + 1} of {len(urls)}")
-            path = folder / f"{index:05d}.parquet"
-            download(url, path)
-            with path.open("rb") as handle:
-                data = pq.ParquetFile(handle)
-                if text_column not in data.schema_arrow.names:
-                    raise RuntimeError(
-                        f"Column '{text_column}' is not in the dataset's data files."
-                    )
-                for batch in data.iter_batches(batch_size=10_000, columns=[text_column]):
-                    for value in batch.column(0).to_pylist():
-                        if counts["processed"] >= limit:
+            path = folder / f"{index:05d}{_suffix(urls[index]) or '.parquet'}"
+            if not path.is_file():
+                fetch(urls[index], path)
+            consumed = cursor["row"] if index == cursor["file"] else 0
+            with contextlib.closing(_values(path, text_column, consumed)) as batches:
+                for values in batches:
+                    for value in values:
+                        if full():
                             break
-                        counts["processed"] += 1
-                        if not isinstance(value, str):
-                            counts["failed" if value is not None else "skipped"] += 1
-                            continue
-                        text = value.strip()
-                        # the same row twice in one import is kept once
-                        digest = hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest()
-                        if not text or digest in seen:
-                            counts["skipped"] += 1
-                            continue
-                        seen.add(digest)
-                        pack.append(text)
-                        if len(pack) >= rows_per_file:
-                            write_pack()
+                        consumed += 1
+                        take(value)
+                        if len(pack) >= rows_per_file or chars >= PACK_CHARS:
+                            write_pack(index, consumed)
                     say(
                         f"{counts['processed']:,} / {total:,} records ({counts['imported']:,} "
                         f"imported in {parts:,} files, {counts['skipped']:,} skipped, "
                         f"{counts['failed']:,} failed)"
                     )
-                    if counts["processed"] >= limit:
+                    if full():
                         break
+            if full():
+                write_pack(index, consumed)
+            else:
+                write_pack(index + 1, 0)
             path.unlink(missing_ok=True)
-        write_pack()
-    finally:
+    except Canceled:
         shutil.rmtree(folder, ignore_errors=True)
+        raise
+    # a failed import keeps its half downloaded file, so a retry carries on
+    shutil.rmtree(folder, ignore_errors=True)
 
     if counts["processed"] == 0:
         raise RuntimeError(
             f"No records found in dataset '{canonical_id}' config '{config}' split '{split}'."
         )
-    say(
+    if counts["imported"] == 0:
+        raise RuntimeError(_nothing_kept(text_column, unusable < counts["processed"]))
+    message = (
         f"Import complete: {counts['imported']:,} rows imported in {parts:,} files, "
         f"{counts['skipped']:,} skipped, {counts['failed']:,} failed "
         f"({counts['processed']:,} processed)"
     )
+    if partial:
+        message += (
+            ". Hugging Face only has a partial copy of this split, so only its first part was read."
+        )
+    say(message)

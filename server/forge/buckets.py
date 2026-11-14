@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from forge import jobs
-from forge.dataset_import import inspect_dataset, validate_import_params
+from forge.dataset_import import inspect_dataset, kind_problem, validate_import_params
 from forge.db import get_session
 from forge.errors import ApiError
 from forge.models import Bucket, Document, Job
@@ -51,6 +51,7 @@ def _to_out(bucket: Bucket, documents: int, parsed: int, chars: int) -> BucketOu
         dataset_split=bucket.dataset_split,
         text_column=bucket.text_column,
         import_limit=bucket.import_limit,
+        kind=bucket.kind,
         created_at=bucket.created_at,
         stats=BucketStats(
             documents=documents,
@@ -170,13 +171,17 @@ def start_dataset_import(
 ) -> JobOut:
     """Queue a background import job to stream Hugging Face records into this collection."""
     bucket = _load_one(session, bucket_id)
-    validate_import_params(payload.dataset, payload)
+    use = validate_import_params(payload.dataset, payload)
+    problem = kind_problem(session, bucket, use)
+    if problem:
+        raise ApiError(409, "wrong_kind", problem)
 
     job = Job(
         job_type="dataset_import",
         payload={
             **JobPayload(target_id=bucket.id, target_name=bucket.name).model_dump(mode="json"),
             **payload.model_dump(mode="json"),
+            "use": use,
         },
     )
     session.add(job)

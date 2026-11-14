@@ -64,9 +64,11 @@ def test_snapshot_archive_counts_and_hashes(client):
     response = client.get(f"/api/datasets/{dataset['id']}/download")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/zip"
-    assert hashlib.sha256(response.content).hexdigest() == dataset["config"]["sha256"]
     with ZipFile(io.BytesIO(response.content)) as archive:
         assert set(archive.namelist()) == {"train.jsonl", "validation.jsonl", "manifest.json"}
+        # the checksum saved with the snapshot is its manifest's
+        saved = dataset["config"]["sha256"]
+        assert hashlib.sha256(archive.read("manifest.json")).hexdigest() == saved
         manifest = json.loads(archive.read("manifest.json"))
         for filename, digest in manifest["files"].items():
             assert hashlib.sha256(archive.read(filename)).hexdigest() == digest
@@ -114,7 +116,7 @@ def test_missing_or_changed_text_does_not_create_record(client, db, data_dir):
 
 def test_archive_tamper_blocks_download_and_delete_removes_file(client, data_dir):
     dataset = create_snapshot(client, add_source(client))
-    path = data_dir / dataset["artifact_uri"]
+    path = data_dir / dataset["artifact_uri"] / "manifest.json"
     path.write_bytes(path.read_bytes() + b"changed")
     assert not client.get(f"/api/datasets/{dataset['id']}").json()["download_ready"]
     assert client.get(f"/api/datasets/{dataset['id']}/verify").json()["valid"] is False

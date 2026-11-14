@@ -59,14 +59,6 @@ class BpbAccumulator:
     def bpb(self) -> float:
         return calculate_bpb(self.total_nll_nats, self.total_scored_bytes)
 
-    def summary(self) -> dict[str, Any]:
-        return {
-            "bpb": round(self.bpb, 6),
-            "total_nll_nats": round(self.total_nll_nats, 4),
-            "total_scored_bytes": self.total_scored_bytes,
-            "total_scored_tokens": self.total_scored_tokens,
-        }
-
 
 class ImportedModelAdapter:
     """Interface for imported models (SP9.8).
@@ -308,9 +300,6 @@ def score_text_with_native_model(
             start += stride
 
     return total_nll, scored_tokens, scored_bytes
-
-
-score_text = score_text_with_native_model
 
 
 def _get_validation_file_info(dataset: Dataset) -> tuple[Path | None, str]:

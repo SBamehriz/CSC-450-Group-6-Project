@@ -64,6 +64,9 @@ export default function UploadPanel({
           />
         </label>
         <Dropzone onFiles={send} busy={upload.isPending} />
+        <p className="muted">
+          For conversations, use a .jsonl file with a "messages" list on each line.
+        </p>
         {upload.isPending ? (
           <p className="muted" role="status">
             Uploading and parsing {upload.variables?.length} file(s). OCR can take a little longer.
@@ -83,7 +86,11 @@ export default function UploadPanel({
               </Chip>
             </div>
             <ul className="upload-outcomes">
-              {upload.data.outcomes.map((outcome, index) => (
+              {/* problems first, so they are easy to find in a long list */}
+              {[
+                ...upload.data.outcomes.filter((outcome) => outcome.status !== 'parsed'),
+                ...upload.data.outcomes.filter((outcome) => outcome.status === 'parsed'),
+              ].map((outcome, index) => (
                 <li key={index}>
                   <strong>{outcome.filename}</strong>:{' '}
                   {outcome.status === 'parsed' ? 'Parsed' : outcome.error || 'Failed'}

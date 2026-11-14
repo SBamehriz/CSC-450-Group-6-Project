@@ -106,15 +106,7 @@ export function Field({
   );
 }
 
-export function Dropzone({
-  onFiles,
-  busy,
-  compact = false,
-}: {
-  onFiles: (files: File[]) => void;
-  busy: boolean;
-  compact?: boolean;
-}) {
+export function Dropzone({ onFiles, busy }: { onFiles: (files: File[]) => void; busy: boolean }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -125,7 +117,7 @@ export function Dropzone({
 
   return (
     <div
-      className={`empty dropzone${compact ? ' dropzone-compact' : ''}${dragging && !busy ? ' dropzone-active' : ''}`}
+      className={`empty dropzone${dragging && !busy ? ' dropzone-active' : ''}`}
       aria-busy={busy}
       onDragOver={(event) => {
         event.preventDefault();
@@ -174,18 +166,21 @@ export function Dropzone({
 const ICONS = {
   home: 'M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z',
   data: 'M12 4 4 8l8 4 8-4zM4 12l8 4 8-4M4 16l8 4 8-4',
-  snapshot: 'M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6',
   upload: 'M12 16V4M7 9l5-5 5 5M4 15v5h16v-5',
-  model: 'M7 7h10v10H7zM4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3',
-  history: 'M12 8v4l3 3M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5',
-  pieces: 'M4 6h7v5H4zM13 6h7v5h-7zM4 13h4v5H4zM10 13h10v5H10z',
-  tokens: 'M5 5h14M5 9h14M5 13h9M5 17h6M17 14l3 3-3 3',
-  eval: 'M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
-  computer: 'M4 5h16v11H4zM9 20h6M12 16v4',
+  model: 'M12 3.5 4.5 7.75v8.5L12 20.5l7.5-4.25v-8.5zM4.5 7.75 12 12l7.5-4.25M12 12v8.5',
+  train: 'M3 12h4l3-7 4 14 3-7h4',
+  chat: 'M4 5h16v11H10l-5 4v-4H4z',
+  settings:
+    'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  close: 'M6 6l12 12M18 6 6 18',
+  sidebar: 'M4 5h16v14H4zM9.5 5v14',
   compare: 'M4 6h7v12H4zM13 6h7v12h-7z',
 } as const;
 
-export function Icon({ name }: { name: keyof typeof ICONS }) {
+export type IconName = keyof typeof ICONS;
+
+export function Icon({ name }: { name: IconName }) {
   return (
     <svg
       className="icon"

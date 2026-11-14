@@ -12,7 +12,13 @@ def answer(loaded, prompt: str, settings: dict, seed: int) -> str:
     import torch
 
     tokenizer, model = loaded.tokenizer, loaded.model
-    encoded = tokenizer(prompt, return_tensors="pt").to(loaded.device)
+    # a chat model is asked the way it learned: the prompt as one user turn
+    chat = loaded.chat and bool(tokenizer.chat_template)
+    if chat:
+        prompt = tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}], add_generation_prompt=True, tokenize=False
+        )
+    encoded = tokenizer(prompt, return_tensors="pt", add_special_tokens=not chat).to(loaded.device)
     # keep room in the window for the answer
     window = getattr(model.config, "n_positions", None) or getattr(
         model.config, "max_position_embeddings", 2048
@@ -31,6 +37,8 @@ def answer(loaded, prompt: str, settings: dict, seed: int) -> str:
             top_k=settings["top_k"] if sampled else None,
             top_p=None,
             pad_token_id=tokenizer.pad_token_id,
+            # and stops at the end of its turn
+            **({"eos_token_id": list(loaded.ends)} if chat else {}),
         )
     return tokenizer.decode(output[0, input_ids.shape[1] :], skip_special_tokens=True)
 

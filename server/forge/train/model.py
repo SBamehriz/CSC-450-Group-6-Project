@@ -60,6 +60,9 @@ class Block(nn.Module):
 
 
 class GPT(nn.Module):
+    # forward enters autocast itself, since DataParallel runs replicas in other threads
+    autocast_dtype: torch.dtype | None = None
+
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.config = config
@@ -97,6 +100,13 @@ class GPT(nn.Module):
         self, idx: torch.Tensor, targets: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         # targets are shifted by the caller
+        kind = idx.device.type
+        if self.autocast_dtype is not None and not (
+            torch.is_autocast_enabled(kind)
+            and torch.get_autocast_dtype(kind) == self.autocast_dtype
+        ):
+            with torch.autocast(kind, dtype=self.autocast_dtype):
+                return self.forward(idx, targets)
         _, seq_len = idx.shape
         if seq_len > self.config.ctx_len:
             raise ValueError(f"sequence of {seq_len} is longer than ctx_len {self.config.ctx_len}")

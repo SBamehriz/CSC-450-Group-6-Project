@@ -79,19 +79,36 @@ def test_train_explains_what_is_missing(client, capsys, training_set):
 
 
 def test_speed_test_then_budget_shows_its_arithmetic(capsys):
-    code, said = forge(capsys, "budget", "--size", "nano", "--hours", "2")
-    assert code == 1 and "forge speed-test --size nano" in said
+    code, said = forge(capsys, "budget", "--params", "1M", "--hours", "2")
+    assert code == 1 and "forge speed-test" in said
+    shape = ["--layers", "1", "--width", "32", "--heads", "2", "--context", "256"]
     code, said = forge(
-        capsys, "speed-test", "--size", "nano", "--sequences", "2", "--device", "cpu"
+        capsys, "speed-test", *shape, "--vocab", "512", "--sequences", "2", "--device", "cpu"
     )
     assert code == 0, said
     assert "The CPU:" in said and "word pieces per second" in said
-    code, said = forge(capsys, "budget", "--size", "nano", "--sequences", "2", "--hours", "2")
+    code, said = forge(capsys, "budget", "--params", "1M", "--sequences", "2", "--hours", "2")
     assert code == 0, said
-    assert "measured on The CPU" in said
+    assert "scaled from a speed test of another size on The CPU" in said
     assert "x 2 h x 3,600 s x 0.9" in said
     assert "word pieces per parameter" in said
     assert "forge train ... --tokens" in said
+
+
+def test_train_from_a_collection_sizes_it_and_gets_the_text_ready(client, capsys, monkeypatch):
+    from test_datasets import add_source
+
+    monkeypatch.setattr("forge.chat_api.unload_models", lambda *a: None)
+    add_source(client, name="notes")
+    flags = ["--data", "notes", "--params", "200k", "--steps", "4", "--batch", "2"]
+    code, said = forge(capsys, "train", "--name", "sized", "--device", "cpu", *flags)
+    assert code == 0, said
+    assert "Making the run 'sized': a new model of 0.2M parameters, 4 steps." in said
+    assert "Finished 'sized' at step 4." in said
+    run = client.get("/api/runs").json()["items"][0]
+    assert run["status"] == "completed" and run["stage"] == "finished"
+    code, said = forge(capsys, "train", "--name", "again", "--data", "nope", "--params", "1M")
+    assert code == 1 and "No collection called 'nope'" in said
 
 
 def test_sweep_ranks_short_runs_by_validation_loss(client, capsys, training_set):

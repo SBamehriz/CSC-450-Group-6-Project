@@ -31,8 +31,8 @@ export default function OverviewPage() {
         <div>
           <h1 className="h1">Overview</h1>
           <p className="lede">
-            Your text, ready for the next step. Upload files, check what was extracted, and save a
-            dataset.
+            Your text, ready for the next step. Upload files, check what was extracted, and train a
+            model on it.
           </p>
         </div>
         <Link className="btn" to="/data">
@@ -53,7 +53,6 @@ export default function OverviewPage() {
             <Metric label="Parsed" value={stats.data.parsed_documents} />
             <Metric label="Flagged for review" value={stats.data.flagged_documents} />
             <Metric label="Failed" value={stats.data.failed_documents} />
-            <Metric label="Ready snapshots" value={stats.data.ready_snapshots} />
           </div>
           <p className="muted">
             {compactNumber(stats.data.chars)} parsed characters · {compactNumber(stats.data.words)}{' '}

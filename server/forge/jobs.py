@@ -344,7 +344,11 @@ def execute_job(job_id: uuid.UUID) -> None:
     if kind == "snapshot_create":
         from forge.snapshots import execute_snapshot_job
 
-        execute_snapshot_job(job_id)
+        try:
+            execute_snapshot_job(job_id)
+        except Exception:
+            # it marked itself failed; keep the runner alive for the jobs waiting behind it
+            log.exception("snapshot job failed job_id=%s", job_id)
         return
 
     if kind == "eval":

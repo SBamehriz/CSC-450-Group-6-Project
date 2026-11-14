@@ -305,109 +305,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/preparation/tools': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Preparation Tools */
-    get: operations['preparation_tools_api_preparation_tools_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/datasets/{dataset_id}/prepared': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get Prepared */
-    get: operations['get_prepared_api_datasets__dataset_id__prepared_get'];
-    put?: never;
-    post?: never;
-    /** Delete Prepared */
-    delete: operations['delete_prepared_api_datasets__dataset_id__prepared_delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/datasets/{dataset_id}/prepare': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Prepare Dataset */
-    post: operations['prepare_dataset_api_datasets__dataset_id__prepare_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/datasets/{dataset_id}/prepared/download': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Download Prepared */
-    get: operations['download_prepared_api_datasets__dataset_id__prepared_download_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/datasets/{dataset_id}/prepared/preview': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Preview Tokens */
-    post: operations['preview_tokens_api_datasets__dataset_id__prepared_preview_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/presets': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List Presets */
-    get: operations['list_presets_api_presets_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/api/gpu': {
     parameters: {
       query?: never;
@@ -419,66 +316,6 @@ export interface paths {
     get: operations['check_gpu_api_gpu_get'];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/models/presets': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get Presets
-     * @description Return model preset shapes and validation boundaries.
-     */
-    get: operations['get_presets_api_models_presets_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/models/vocabularies': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List Vocabularies
-     * @description List available vocabularies learned from prepared datasets.
-     */
-    get: operations['list_vocabularies_api_models_vocabularies_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/models/preview': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Preview Model Shape
-     * @description Preview model parameter count and estimated memory before saving.
-     */
-    post: operations['preview_model_shape_api_models_preview_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1226,6 +1063,63 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/plan': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Plan */
+    post: operations['plan_api_plan_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/train': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Train
+     * @description Makes the model, gets the text ready if needed, and starts training.
+     */
+    post: operations['train_api_train_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/chat': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Chat
+     * @description Streams the answer as server-sent events.
+     */
+    post: operations['chat_api_chat_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1441,6 +1335,11 @@ export interface components {
       text_column?: string | null;
       /** Import Limit */
       import_limit?: number | null;
+      /**
+       * Kind
+       * @default text
+       */
+      kind: string;
     };
     /** BucketStats */
     BucketStats: {
@@ -1459,6 +1358,43 @@ export interface components {
       name?: string | null;
       /** Description */
       description?: string | null;
+    };
+    /** ChatMessage */
+    ChatMessage: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: 'system' | 'user' | 'assistant';
+      /** Content */
+      content: string;
+    };
+    /** ChatRequest */
+    ChatRequest: {
+      /**
+       * Model Id
+       * Format: uuid
+       */
+      model_id: string;
+      /** Messages */
+      messages: components['schemas']['ChatMessage'][];
+      /**
+       * Temperature
+       * @default 0.7
+       */
+      temperature: number;
+      /**
+       * Top P
+       * @default 0.95
+       */
+      top_p: number;
+      /**
+       * Max New Tokens
+       * @default 256
+       */
+      max_new_tokens: number;
+      /** Seed */
+      seed?: number | null;
     };
     /** CheckpointOut */
     CheckpointOut: {
@@ -1614,11 +1550,8 @@ export interface components {
       split: string;
       /** Text Column */
       text_column: string;
-      /**
-       * Limit
-       * @default 500
-       */
-      limit: number;
+      /** Limit */
+      limit?: number | null;
     };
     /** DatasetOut */
     DatasetOut: {
@@ -1749,8 +1682,6 @@ export interface components {
     };
     /** EstimateRequest */
     EstimateRequest: {
-      /** Preset */
-      preset?: string | null;
       shape?: components['schemas']['ShapeIn'] | null;
       /** Train Tokens */
       train_tokens: number;
@@ -1933,6 +1864,8 @@ export interface components {
       columns: string[];
       /** Text Columns */
       text_columns: string[];
+      /** Chat Columns */
+      chat_columns?: string[];
     };
     /** HfInspectRequest */
     HfInspectRequest: {
@@ -2058,10 +1991,6 @@ export interface components {
        * @default
        */
       description: string;
-      /** Preset */
-      preset?: string | null;
-      /** Dataset Id */
-      dataset_id?: string | null;
       /** Tokenizer Id */
       tokenizer_id?: string | null;
       /** N Layer */
@@ -2127,74 +2056,27 @@ export interface components {
       source: string;
       /** Estimated Memory Bytes */
       estimated_memory_bytes?: number | null;
+      /** Parent Id */
+      parent_id?: string | null;
+      /** Parent Name */
+      parent_name?: string | null;
+      /**
+       * Chat
+       * @default false
+       */
+      chat: boolean;
+      /**
+       * Ready
+       * @default false
+       */
+      ready: boolean;
+      /** Best Val Loss */
+      best_val_loss?: number | null;
       /**
        * Created At
        * Format: date-time
        */
       created_at: string;
-    };
-    /** ModelPreviewOut */
-    ModelPreviewOut: {
-      /** Valid */
-      valid: boolean;
-      /**
-       * Param Count
-       * @default 0
-       */
-      param_count: number;
-      /**
-       * Estimated Memory Bytes
-       * @default 0
-       */
-      estimated_memory_bytes: number;
-      /**
-       * Estimated Memory Mb
-       * @default 0
-       */
-      estimated_memory_mb: number;
-      /**
-       * Vocab Size
-       * @default 0
-       */
-      vocab_size: number;
-      /** Error */
-      error?: string | null;
-    };
-    /** ModelPreviewRequest */
-    ModelPreviewRequest: {
-      /** Preset */
-      preset?: string | null;
-      /** Dataset Id */
-      dataset_id?: string | null;
-      /** Tokenizer Id */
-      tokenizer_id?: string | null;
-      /**
-       * N Layer
-       * @default 4
-       */
-      n_layer: number;
-      /**
-       * D Model
-       * @default 128
-       */
-      d_model: number;
-      /**
-       * N Head
-       * @default 4
-       */
-      n_head: number;
-      /**
-       * Ctx Len
-       * @default 512
-       */
-      ctx_len: number;
-      /** Vocab Size */
-      vocab_size?: number | null;
-      /**
-       * Dropout
-       * @default 0
-       */
-      dropout: number;
     };
     /** MoveDocument */
     MoveDocument: {
@@ -2294,96 +2176,106 @@ export interface components {
       /** Total */
       total: number;
     };
-    /** PrepareCreate */
-    PrepareCreate: {
-      /**
-       * Vocab Size
-       * @default 4096
-       */
-      vocab_size: number;
+    /** PlanData */
+    PlanData: {
+      /** Tokens */
+      tokens: number | null;
+      /** Exact */
+      exact: boolean;
+      /** Passes */
+      passes: number | null;
+      /** Enough */
+      enough: boolean | null;
     };
-    /** PrepareTools */
-    PrepareTools: {
-      /** Available */
-      available: boolean;
-      /** Max Text Mb */
-      max_text_mb: number;
+    /** PlanMemory */
+    PlanMemory: {
+      /** Needed Bytes */
+      needed_bytes: number;
+      /** Free Bytes */
+      free_bytes: number | null;
+      /** Cards */
+      cards: number;
+      /** Card Name */
+      card_name: string | null;
+      /** Sequences Per Pass */
+      sequences_per_pass: number;
+      /** Fits */
+      fits: boolean | null;
     };
-    /** PreparedOut */
-    PreparedOut: {
-      /** Ready */
-      ready: boolean;
-      /**
-       * Message
-       * @default
-       */
-      message: string;
-      /**
-       * Vocab Size
-       * @default 0
-       */
-      vocab_size: number;
-      /**
-       * Requested Vocab Size
-       * @default 0
-       */
-      requested_vocab_size: number;
-      /**
-       * Train Tokens
-       * @default 0
-       */
-      train_tokens: number;
-      /**
-       * Validation Tokens
-       * @default 0
-       */
-      validation_tokens: number;
-      /**
-       * Trained On Documents
-       * @default 0
-       */
-      trained_on_documents: number;
-      /**
-       * Eos Id
-       * @default 0
-       */
-      eos_id: number;
-      /**
-       * Sha256
-       * @default
-       */
-      sha256: string;
-      /**
-       * Snapshot Sha256
-       * @default
-       */
-      snapshot_sha256: string;
-    };
-    /** PresetMemory */
-    PresetMemory: {
-      /** Sequences Per Step */
-      sequences_per_step: number;
-      /** Bytes */
-      bytes: number;
-    };
-    /** PresetOut */
-    PresetOut: {
-      /** Name */
-      name: string;
-      /** N Layer */
-      n_layer: number;
-      /** D Model */
-      d_model: number;
-      /** N Head */
-      n_head: number;
-      /** Ctx Len */
-      ctx_len: number;
-      /** Vocab Size */
-      vocab_size: number;
+    /** PlanOut */
+    PlanOut: {
+      /** Fine Tune */
+      fine_tune: boolean;
+      shape: components['schemas']['ShapeIn'];
+      /** Dropout */
+      dropout: number;
       /** Parameters */
       parameters: number;
-      /** Memory */
-      memory: components['schemas']['PresetMemory'][];
+      /** Train Tokens */
+      train_tokens: number;
+      settings: components['schemas']['TrainSettings'];
+      /** Why */
+      why: {
+        [key: string]: string;
+      };
+      data: components['schemas']['PlanData'];
+      memory: components['schemas']['PlanMemory'];
+      time: components['schemas']['PlanTime'];
+      /** Warnings */
+      warnings: string[];
+      /** Blockers */
+      blockers: string[];
+    };
+    /** PlanRequest */
+    PlanRequest: {
+      /** Bucket Id */
+      bucket_id?: string | null;
+      /** Base Model Id */
+      base_model_id?: string | null;
+      /** Parameters */
+      parameters?: number | null;
+      /** Hours */
+      hours?: number | null;
+      /**
+       * Device
+       * @default auto
+       * @enum {string}
+       */
+      device: 'auto' | 'cpu' | 'cuda';
+      /** N Layer */
+      n_layer?: number | null;
+      /** D Model */
+      d_model?: number | null;
+      /** N Head */
+      n_head?: number | null;
+      /** Ctx Len */
+      ctx_len?: number | null;
+      /** Vocab Size */
+      vocab_size?: number | null;
+      /** Dropout */
+      dropout?: number | null;
+      /** Train Tokens */
+      train_tokens?: number | null;
+      /** Batch Size */
+      batch_size?: number | null;
+      /** Learning Rate */
+      learning_rate?: number | null;
+      /** Warmup Steps */
+      warmup_steps?: number | null;
+      /** Weight Decay */
+      weight_decay?: number | null;
+    };
+    /** PlanTime */
+    PlanTime: {
+      /** Tokens Per Sec */
+      tokens_per_sec: number | null;
+      /** Hours */
+      hours: number | null;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: 'measured' | 'scaled' | 'none';
     };
     /** PromptCompareCreate */
     PromptCompareCreate: {
@@ -2631,6 +2523,25 @@ export interface components {
       job_id?: string | null;
       /** Job Status */
       job_status?: string | null;
+      /**
+       * Fine Tune
+       * @default false
+       */
+      fine_tune: boolean;
+      /** Base Model Id */
+      base_model_id?: string | null;
+      /** Base Model Name */
+      base_model_name?: string | null;
+      /**
+       * Stage
+       * @default training
+       */
+      stage: string;
+      /**
+       * Stage Message
+       * @default
+       */
+      stage_message: string;
       /** Status */
       status: string;
       /** Device */
@@ -2712,8 +2623,6 @@ export interface components {
     };
     /** SpeedTestCreate */
     SpeedTestCreate: {
-      /** Preset */
-      preset?: string | null;
       shape?: components['schemas']['ShapeIn'] | null;
       /**
        * Sequences Per Step
@@ -2836,6 +2745,36 @@ export interface components {
        */
       created_at: string;
     };
+    /** TrainCreate */
+    TrainCreate: {
+      /** Name */
+      name: string;
+      /**
+       * Bucket Id
+       * Format: uuid
+       */
+      bucket_id: string;
+      /** Base Model Id */
+      base_model_id?: string | null;
+      shape?: components['schemas']['ShapeIn'] | null;
+      /**
+       * Dropout
+       * @default 0
+       */
+      dropout: number;
+      settings?: components['schemas']['TrainSettings'];
+      /**
+       * Seed
+       * @default 0
+       */
+      seed: number;
+      /**
+       * Device
+       * @default auto
+       * @enum {string}
+       */
+      device: 'auto' | 'cpu' | 'cuda';
+    };
     /** TrainSettings */
     TrainSettings: {
       /**
@@ -2924,24 +2863,6 @@ export interface components {
       input?: unknown;
       /** Context */
       ctx?: Record<string, never>;
-    };
-    /** VocabularyOut */
-    VocabularyOut: {
-      /**
-       * Dataset Id
-       * Format: uuid
-       */
-      dataset_id: string;
-      /** Dataset Name */
-      dataset_name: string;
-      /** Vocab Size */
-      vocab_size: number;
-      /** Requested Vocab Size */
-      requested_vocab_size: number;
-      /** Train Tokens */
-      train_tokens: number;
-      /** Trained On Documents */
-      trained_on_documents: number;
     };
   };
   responses: never;
@@ -3674,205 +3595,6 @@ export interface operations {
       };
     };
   };
-  preparation_tools_api_preparation_tools_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PrepareTools'];
-        };
-      };
-    };
-  };
-  get_prepared_api_datasets__dataset_id__prepared_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dataset_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PreparedOut'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  delete_prepared_api_datasets__dataset_id__prepared_delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dataset_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  prepare_dataset_api_datasets__dataset_id__prepare_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dataset_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PrepareCreate'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PreparedOut'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  download_prepared_api_datasets__dataset_id__prepared_download_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dataset_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  preview_tokens_api_datasets__dataset_id__prepared_preview_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dataset_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TokenPreviewCreate'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TokenPreview'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_presets_api_presets_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PresetOut'][];
-        };
-      };
-    };
-  };
   check_gpu_api_gpu_get: {
     parameters: {
       query?: never;
@@ -3893,86 +3615,12 @@ export interface operations {
       };
     };
   };
-  get_presets_api_models_presets_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            [key: string]: unknown;
-          };
-        };
-      };
-    };
-  };
-  list_vocabularies_api_models_vocabularies_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VocabularyOut'][];
-        };
-      };
-    };
-  };
-  preview_model_shape_api_models_preview_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ModelPreviewRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ModelPreviewOut'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
   list_models_api_models_get: {
     parameters: {
       query?: {
         limit?: number;
         offset?: number;
+        ready?: boolean | null;
       };
       header?: never;
       path?: never;
@@ -5641,6 +5289,105 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['CompareOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  plan_api_plan_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlanRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PlanOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  train_api_train_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TrainCreate'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  chat_api_chat_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChatRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
         };
       };
       /** @description Validation Error */

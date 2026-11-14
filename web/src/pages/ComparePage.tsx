@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 import {
   api,
@@ -12,6 +13,7 @@ import JobStatus, { useJob } from '../components/JobStatus';
 import { Card, CardHead, Empty, ErrorBox, Notice } from '../components/ui';
 import { compactNumber, relativeDate } from '../lib/format';
 import { jobBusy, percent } from '../lib/measure';
+import EvaluationsPage from './EvaluationsPage';
 
 const NOT_YET = 'Not measured yet';
 
@@ -19,9 +21,39 @@ function lossText(value: number | null): string {
   return value === null ? NOT_YET : value.toFixed(3);
 }
 
+// two tabs: side by side, and measuring one model
 export default function ComparePage() {
+  const measure = useLocation().pathname === '/compare/measure';
+  return (
+    <>
+      <div className="page-intro">
+        <h1 className="h1">Compare</h1>
+      </div>
+      <nav className="tabs" aria-label="Compare">
+        <Link
+          to="/compare"
+          className={measure ? undefined : 'active'}
+          aria-current={measure ? undefined : 'page'}
+        >
+          Side by side
+        </Link>
+        <Link
+          to="/compare/measure"
+          className={measure ? 'active' : undefined}
+          aria-current={measure ? 'page' : undefined}
+        >
+          Measure
+        </Link>
+      </nav>
+      {measure ? <EvaluationsPage /> : <TwoModels />}
+    </>
+  );
+}
+
+function TwoModels() {
   const models = useQuery({ queryKey: ['models', 'all'], queryFn: api.listAllModels });
-  const [first, setFirst] = useState('');
+  const [params] = useSearchParams();
+  const [first, setFirst] = useState(params.get('model') ?? '');
   const [second, setSecond] = useState('');
   const chosen = [first, second].filter(Boolean);
   const compared = useQuery({
@@ -34,7 +66,6 @@ export default function ComparePage() {
   return (
     <>
       <div className="page-intro">
-        <h1 className="h1">Compare models</h1>
         <p className="lede">
           Put two models side by side: their size and loss, benchmark scores with how sure each
           score is, and their answers to the same prompts.
@@ -53,7 +84,7 @@ export default function ComparePage() {
           ) : !list.length ? (
             <Empty
               title="No models yet"
-              hint="Make one on the Models page, or import one from Hugging Face there."
+              hint="Train one on the Train page, or import one from Hugging Face on the Models page."
             />
           ) : (
             <div className="dataset-form">

@@ -1,36 +1,4 @@
-import type { DatasetBuild, Model, Run, Tokenizer, TrainSettings } from '../api/client';
-
-export const DEFAULT_SETTINGS: TrainSettings = {
-  batch_size: 16,
-  micro_batch_size: 0,
-  max_steps: 1000,
-  learning_rate: 6e-4,
-  warmup_steps: -1,
-  weight_decay: 0.1,
-  grad_clip: 1.0,
-  eval_every: 100,
-  eval_tokens: 100_000,
-  save_every: 200,
-};
-
-export function usableBuilds(
-  model: Model | undefined,
-  builds: DatasetBuild[],
-  vocabularies: Tokenizer[],
-): DatasetBuild[] {
-  if (!model) return [];
-  const size = new Map(vocabularies.map((v) => [v.id, v.vocab_size]));
-  return builds.filter((build) => {
-    if (build.status !== 'ready') return false;
-    if (model.tokenizer_id) return build.tokenizer_id === model.tokenizer_id;
-    return size.get(build.tokenizer_id) === model.vocab_size;
-  });
-}
-
-export function trainingTokens(build: DatasetBuild | undefined): number | null {
-  const tokens = build?.stats?.train?.tokens;
-  return typeof tokens === 'number' ? tokens : null;
-}
+import type { Run } from '../api/client';
 
 export function isActive(run: Run): boolean {
   return run.job_status === 'pending' || run.job_status === 'running' || run.status === 'running';

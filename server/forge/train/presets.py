@@ -1,10 +1,12 @@
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
-MAX_N_LAYER = 48
-MAX_D_MODEL = 2048
+MAX_N_LAYER = 128
+MAX_D_MODEL = 8192
 MAX_DROPOUT = 0.2
 MIN_CTX = 64
-MAX_CTX = 2048
+MAX_CTX = 8192
+# token files hold unsigned 16-bit numbers
+MAX_VOCAB = 65535
 CTX_MULTIPLE = 64
 
 
@@ -27,22 +29,6 @@ class ModelConfig:
     @property
     def head_dim(self) -> int:
         return self.d_model // self.n_head
-
-
-PRESETS: dict[str, ModelConfig] = {
-    "nano": ModelConfig(n_layer=4, d_model=128, n_head=4, ctx_len=512),
-    "micro": ModelConfig(n_layer=6, d_model=256, n_head=8, ctx_len=512),
-    "small": ModelConfig(n_layer=8, d_model=512, n_head=8, ctx_len=512),
-    "large": ModelConfig(n_layer=12, d_model=768, n_head=12, ctx_len=512),
-    "135m": ModelConfig(n_layer=17, d_model=768, n_head=12, ctx_len=1024),
-}
-
-
-def get_preset(name: str, **overrides) -> ModelConfig:
-    if name not in PRESETS:
-        raise ValueError(f"unknown preset {name!r}; pick one of {sorted(PRESETS)}")
-    config = PRESETS[name]
-    return replace(config, **overrides) if overrides else config
 
 
 def validate(config: ModelConfig) -> None:
@@ -85,9 +71,6 @@ TRAINED_BYTES = 16
 LOGIT_BYTES = 13
 MATH_ATTENTION_BYTES = 7
 CUDA_CONTEXT_BYTES = 500_000_000
-
-
-ALLOWED_CTX = (256, 512, 1024)
 
 
 def activation_bytes_per_token(hidden: int, intermediate: int) -> int:
@@ -135,19 +118,13 @@ def explain_shape_error(
         return f"Layer count (blocks) must be between 1 and {MAX_N_LAYER} (got {n_layer})."
     if not 1 <= d_model <= MAX_D_MODEL:
         return f"Model width (d_model) must be between 1 and {MAX_D_MODEL} (got {d_model})."
-    if ctx_len not in ALLOWED_CTX:
-        allowed = ", ".join(str(c) for c in ALLOWED_CTX)
-        return f"Context length must be one of {allowed} tokens (got {ctx_len})."
+    if not MIN_CTX <= ctx_len <= MAX_CTX or ctx_len % CTX_MULTIPLE:
+        return (
+            f"Context length must be {MIN_CTX} to {MAX_CTX:,} tokens, in steps of "
+            f"{CTX_MULTIPLE} (got {ctx_len})."
+        )
     if not 0.0 <= dropout <= MAX_DROPOUT:
         return f"Dropout must be between 0.0 and {MAX_DROPOUT} (got {dropout})."
     if vocab_size < 2:
         return f"Vocabulary size must be at least 2 tokens (got {vocab_size})."
     return None
-
-
-def describe(config: ModelConfig) -> str:
-    params = count_params(config)
-    return (
-        f"{config.n_layer}L x {config.d_model}d x {config.n_head}h, "
-        f"ctx {config.ctx_len}, vocab {config.vocab_size} -> {params / 1e6:.2f}M params"
-    )

@@ -73,7 +73,8 @@ def test_estimate_says_where_its_speed_came_from(client):
 
 
 def test_estimate_judges_memory_against_what_is_free(client, monkeypatch, tmp_path):
-    ask = {"preset": "135m", "train_tokens": 10**9, "sequences_per_step": 16}
+    big = {"n_layer": 17, "d_model": 768, "n_head": 12, "ctx_len": 1024}
+    ask = {"shape": big, "train_tokens": 10**9, "sequences_per_step": 16}
     stand_in(monkeypatch, tmp_path, "0, GPU-1111aaaa, Card, 8192, 4000, 595.79, 8.6\n")
     tight = client.post("/api/estimate", json=ask).json()
     assert tight["free_bytes"] == 4000 * 2**20

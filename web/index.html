@@ -1,9 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Forge</title>
+    <script>
+      // light, dark or this computer's own setting, read before anything is drawn
+      // so a dark page never flashes white. lib/appearance.ts keeps it in step
+      try {
+        var kept = localStorage.getItem('forge.appearance');
+        if (kept === 'dark') document.documentElement.dataset.theme = 'dark';
+        else if (kept === 'system') document.documentElement.removeAttribute('data-theme');
+      } catch (e) {}
+    </script>
+    <style>
+      html {
+        background: #f7f7f7;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']) {
+          background: #121212;
+        }
+      }
+      html[data-theme='dark'] {
+        background: #121212;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

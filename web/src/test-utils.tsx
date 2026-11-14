@@ -9,6 +9,7 @@ export const bucket: Bucket = {
   id: 'bucket-1',
   name: 'Sources',
   description: '',
+  kind: 'text',
   created_at: '2026-10-02T00:00:00Z',
   stats: { documents: 51, parsed_documents: 50, chars: 10000, est_tokens: 2500 },
 };

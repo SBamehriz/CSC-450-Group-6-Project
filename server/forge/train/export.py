@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from forge.chatformat import CHAT_TEMPLATE, END_ID, SPECIAL_TOKENS
 from forge.config import get_settings
 from forge.db import get_engine
 from forge.jobs import JobFailed, report
@@ -72,6 +73,7 @@ def run(job_id: uuid.UUID) -> dict:
     try:
         import transformers  # noqa: F401
 
+        from forge.measuring import chat_marks
         from forge.train.trainer import load_checkpoint
     except ImportError as problem:
         raise JobFailed(
@@ -96,6 +98,7 @@ def run(job_id: uuid.UUID) -> dict:
             else None
         )
         name = model_row.name if model_row else "model"
+        learned_chat = bool(model_row and model_row.chat)
         report(job_id, 0, 3, "Reading the save point")
         state = load_checkpoint(checkpoint)
         checkpoint_id, step = checkpoint.id, checkpoint.step
@@ -106,9 +109,16 @@ def run(job_id: uuid.UUID) -> dict:
     temporary.mkdir(parents=True)
     try:
         report(job_id, 1, 3, "Writing the Hugging Face folder")
-        gpt2_model(state["model"], state["config"]).save_pretrained(
-            temporary, safe_serialization=True
+        marks = bool(
+            learned_chat and vocab_path and vocab_path.is_file() and chat_marks(vocab_path)
         )
+        exported = gpt2_model(state["model"], state["config"])
+        if marks:
+            # an answer ends at the end of a turn too
+            exported.generation_config.eos_token_id = [EOS_ID, END_ID]
+        exported.save_pretrained(temporary, safe_serialization=True)
+        # so transformers can chat with it the way chat here does
+        chat = {"extra_special_tokens": list(SPECIAL_TOKENS[1:]), "chat_template": CHAT_TEMPLATE}
         if vocab_path and vocab_path.is_file():
             shutil.copyfile(vocab_path, temporary / "tokenizer.json")
             (temporary / "tokenizer_config.json").write_text(
@@ -118,6 +128,7 @@ def run(job_id: uuid.UUID) -> dict:
                         "bos_token": "<|eos|>",
                         "eos_token": "<|eos|>",
                         "model_max_length": state["config"]["ctx_len"],
+                        **(chat if marks else {}),
                     },
                     indent=2,
                 )

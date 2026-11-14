@@ -171,7 +171,7 @@ def test_rejects_missing_snapshot_unready_vocabulary_and_duplicate_names(client,
 def test_changed_snapshot_fails_cleanly_and_retry_works(
     client, snapshot, ready_tokenizer, data_dir
 ):
-    path = data_dir / "datasets" / f"{snapshot['id']}.zip"
+    path = data_dir / "datasets" / snapshot["id"] / "manifest.json"
     original = path.read_bytes()
     build = queue_build(client, snapshot, ready_tokenizer)
     path.write_bytes(original + b"changed")
@@ -225,15 +225,15 @@ def test_crash_recovery_marks_the_job_failed_and_cleans_up(
     assert not temporary.exists()
 
 
-@pytest.mark.parametrize("limit", ["MAX_BUILD_TOKENS", "MAX_SPLIT_BYTES"])
-def test_size_guardrails_leave_no_partial_build(
-    client, snapshot, ready_tokenizer, monkeypatch, data_dir, limit
+def test_a_full_disk_leaves_no_partial_build(
+    client, snapshot, ready_tokenizer, monkeypatch, data_dir
 ):
-    monkeypatch.setattr(builds, limit, 1)
+    # no size cap: only free disk stops a training set
+    monkeypatch.setattr(builds, "DISK_SPARE", 1 << 62)
     build = queue_build(client, snapshot, ready_tokenizer)
     jobs.run_pending()
     result = client.get(f"/api/dataset-builds/{build['id']}").json()
-    assert result["status"] == "failed"
+    assert result["status"] == "failed" and "not enough free disk space" in result["error"]
     assert not list((data_dir / "builds").glob(build["id"] + "*"))
 
 
@@ -265,9 +265,9 @@ def test_two_real_runner_processes_take_turns(client, snapshot):
 
 
 def test_failed_vocabulary_does_not_publish_partial_files(client, snapshot, data_dir):
-    path = data_dir / "datasets" / f"{snapshot['id']}.zip"
+    path = data_dir / "datasets" / snapshot["id"] / "manifest.json"
     target = queue_tokenizer(client, snapshot)
-    path.write_bytes(b"not a zip")
+    path.write_bytes(b"not a manifest")
     jobs.run_pending()
     result = client.get(f"/api/tokenizers/{target['id']}").json()
     assert result["status"] == "failed" and result["vocab_size"] is None

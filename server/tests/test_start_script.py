@@ -72,6 +72,8 @@ def test_another_host_gets_a_token_and_dev_stays_on_this_computer(start, monkeyp
 
 
 def test_on_this_computer_there_is_no_token(start, monkeypatch, capsys):
+    # a screen, or linux with none (like the test runner) counts as a server
+    monkeypatch.setenv("DISPLAY", ":0")
     launch(start, monkeypatch, "--no-open")
     assert "FORGE_TOKEN" not in os.environ
     assert "http://localhost:8000 " in capsys.readouterr().out

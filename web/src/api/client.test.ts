@@ -65,3 +65,40 @@ it('sends the page offset and encoded document filters', async () => {
   expect(url.searchParams.get('q')).toBe('notes & tests');
   expect(url.searchParams.get('flagged')).toBe('true');
 });
+
+it('fetches bucket deletion summary and sends explicit confirmation params on delete', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          bucket_id: 'bucket-1',
+          bucket_name: 'Corpus',
+          document_count: 1200,
+          raw_file_count: 1200,
+          text_file_count: 1200,
+          physical_file_count: 2400,
+          raw_bytes: 1024,
+          text_bytes: 512,
+          total_bytes: 1536,
+          shared_file_count: 0,
+          missing_file_count: 0,
+          active_jobs: [],
+          scope_token: 'tok&1',
+        }),
+      ),
+    )
+    .mockResolvedValueOnce(new Response(null, { status: 204 }));
+  vi.stubGlobal('fetch', fetch);
+
+  const summary = await api.bucketDeletionSummary('bucket-1');
+  expect(summary.document_count).toBe(1200);
+  await api.deleteBucket('bucket-1', { confirm: true, scopeToken: summary.scope_token });
+
+  expect(fetch.mock.calls[0][0]).toBe('/api/buckets/bucket-1/deletion-summary');
+  const deleteUrl = new URL(fetch.mock.calls[1][0], 'http://localhost');
+  expect(fetch.mock.calls[1][1]).toEqual(expect.objectContaining({ method: 'DELETE' }));
+  expect(deleteUrl.pathname).toBe('/api/buckets/bucket-1');
+  expect(deleteUrl.searchParams.get('confirm')).toBe('true');
+  expect(deleteUrl.searchParams.get('scope_token')).toBe('tok&1');
+});

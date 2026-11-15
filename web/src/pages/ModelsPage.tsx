@@ -432,18 +432,23 @@ export default function ModelsPage() {
                         </div>
 
                         {r.result_type === 'benchmark' ? (
-                          <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
-                            <div>
-                              <span className="muted" style={{ fontSize: '0.85em' }}>
-                                Score:{' '}
-                              </span>
-                              <strong className="mono" style={{ fontSize: '1.05em' }}>
-                                {r.score !== null && r.score !== undefined
-                                  ? r.score.toFixed(4)
-                                  : 'None'}
-                              </strong>
-                            </div>
-                          </div>
+                          (() => {
+                            const score = r.score ?? r.benchmark_score;
+                            return (
+                              <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
+                                <div>
+                                  <span className="muted" style={{ fontSize: '0.85em' }}>
+                                    Score:{' '}
+                                  </span>
+                                  <strong className="mono" style={{ fontSize: '1.05em' }}>
+                                    {typeof score === 'number' && Number.isFinite(score)
+                                      ? score.toFixed(4)
+                                      : '—'}
+                                  </strong>
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : r.result_type === 'bpb' ? (
                           <div
                             style={{
@@ -458,10 +463,16 @@ export default function ModelsPage() {
                                 Bits per byte:{' '}
                               </span>
                               <strong className="mono" style={{ fontSize: '1.05em' }}>
-                                {r.bpb !== null ? r.bpb.toFixed(4) : '—'}
+                                {typeof r.bpb === 'number' && Number.isFinite(r.bpb)
+                                  ? r.bpb.toFixed(4)
+                                  : '—'}
                               </strong>
                             </div>
-                            {r.total_nll !== null && r.scored_tokens ? (
+                            {typeof r.total_nll === 'number' &&
+                            Number.isFinite(r.total_nll) &&
+                            typeof r.scored_tokens === 'number' &&
+                            Number.isFinite(r.scored_tokens) &&
+                            r.scored_tokens > 0 ? (
                               <div>
                                 <span className="muted" style={{ fontSize: '0.85em' }}>
                                   Val loss (nats):{' '}

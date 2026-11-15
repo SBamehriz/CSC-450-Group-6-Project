@@ -1603,3 +1603,76 @@ circle.chart-line-val {
 .child-row td:first-child {
   padding-left: var(--s6);
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+  background: rgb(29 29 31 / 0.45);
+}
+
+.modal-dialog {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 2 * var(--gutter));
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.16);
+  padding: var(--s5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.modal-header .h2 {
+  margin: 0;
+}
+
+.modal-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin: var(--s4) 0;
+  padding: var(--s3);
+  background: var(--page);
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius);
+}
+
+.modal-stats dt {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+}
+
+.modal-stats dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0 0 var(--s4);
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}

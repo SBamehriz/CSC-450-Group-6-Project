@@ -367,11 +367,16 @@ def test_bucket_stats_follow_the_documents(client, bucket):
     assert stats()["documents"] == 0
 
 
-def test_a_bucket_with_documents_still_refuses_deletion(client, bucket):
+def test_a_bucket_with_documents_requires_explicit_confirmation(client, bucket):
     upload(client, bucket, [("a.txt", TEXT)])
-    response = client.delete(f"/api/buckets/{bucket}")
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "bucket_not_empty"
+    refused = client.delete(f"/api/buckets/{bucket}")
+    assert refused.status_code == 400
+    assert refused.json()["error"]["code"] == "confirmation_required"
+    assert client.get("/api/documents").json()["total"] == 1
+
+    confirmed = client.delete(f"/api/buckets/{bucket}?confirm=true")
+    assert confirmed.status_code == 204
+    assert client.get("/api/documents").json()["total"] == 0
 
 
 def test_the_documented_limits_are_what_the_code_uses():

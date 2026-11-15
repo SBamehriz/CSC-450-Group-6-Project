@@ -3,17 +3,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api, type Bucket } from '../api/client';
-import {
-  Card,
-  CardHead,
-  Chip,
-  ConfirmButton,
-  Empty,
-  ErrorBox,
-  Field,
-  Icon,
-  Notice,
-} from '../components/ui';
+import DeleteCollectionDialog, { type DeleteTarget } from '../components/DeleteCollectionDialog';
+import { Card, CardHead, Chip, Empty, ErrorBox, Field, Icon, Notice } from '../components/ui';
 import { compactNumber, plural, relativeDate } from '../lib/format';
 
 export default function BucketsPage() {
@@ -23,14 +14,11 @@ export default function BucketsPage() {
   const [filter, setFilter] = useState('all');
   const [sort, setSort] = useState('newest');
   const [view, setView] = useState<'cards' | 'list'>('cards');
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['buckets'] });
     void queryClient.invalidateQueries({ queryKey: ['overview'] });
   };
-  const remove = useMutation({
-    mutationFn: (id: string) => api.deleteBucket(id),
-    onSuccess: refresh,
-  });
   const all = buckets.data?.items ?? [];
   const visible = all
     .filter(
@@ -133,7 +121,6 @@ export default function BucketsPage() {
           <p className="muted result-count" role="status">
             Showing {visible.length} of {all.length} collections
           </p>
-          {remove.error ? <Notice tone="bad">{remove.error.message}</Notice> : null}
           {!visible.length ? (
             <Empty
               title="No matches"
@@ -157,8 +144,7 @@ export default function BucketsPage() {
                 <CollectionCard
                   key={bucket.id}
                   bucket={bucket}
-                  deleting={remove.isPending}
-                  onDelete={() => remove.mutate(bucket.id)}
+                  onDelete={() => setDeleteTarget({ id: bucket.id, name: bucket.name })}
                 />
               ))}
             </div>
@@ -191,16 +177,18 @@ export default function BucketsPage() {
                         <td className="num">{compactNumber(bucket.stats.chars)}</td>
                         <td className="muted">{relativeDate(bucket.created_at)}</td>
                         <td>
-                          {bucket.stats.documents === 0 ? (
-                            <ConfirmButton
-                              label="Delete"
-                              confirmLabel={`Delete ${bucket.name}`}
-                              disabled={remove.isPending}
-                              onConfirm={() => remove.mutate(bucket.id)}
-                            />
-                          ) : (
-                            <Link to={`/data/${bucket.id}`}>Review files</Link>
-                          )}
+                          <span className="actions">
+                            <Link to={`/data/${bucket.id}`}>
+                              {bucket.stats.documents ? 'Review files' : 'Add files'}
+                            </Link>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setDeleteTarget({ id: bucket.id, name: bucket.name })}
+                            >
+                              Delete
+                            </button>
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -211,6 +199,7 @@ export default function BucketsPage() {
           )}
         </>
       )}
+      <DeleteCollectionDialog target={deleteTarget} onClose={() => setDeleteTarget(null)} />
     </>
   );
 }
@@ -279,15 +268,7 @@ function NewCollection({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function CollectionCard({
-  bucket,
-  deleting,
-  onDelete,
-}: {
-  bucket: Bucket;
-  deleting: boolean;
-  onDelete: () => void;
-}) {
+function CollectionCard({ bucket, onDelete }: { bucket: Bucket; onDelete: () => void }) {
   const parsed = bucket.stats.parsed_documents;
   const ready = parsed >= 2 && bucket.id !== 'large';
   return (
@@ -342,14 +323,10 @@ function CollectionCard({
         </Link>
         {ready ? (
           <Link to={`/train?data=${encodeURIComponent(bucket.id)}`}>Train on this →</Link>
-        ) : bucket.stats.documents === 0 ? (
-          <ConfirmButton
-            label="Delete"
-            confirmLabel={`Delete ${bucket.name}`}
-            disabled={deleting}
-            onConfirm={onDelete}
-          />
         ) : null}
+        <button type="button" className="btn" onClick={onDelete}>
+          Delete
+        </button>
       </div>
     </article>
   );

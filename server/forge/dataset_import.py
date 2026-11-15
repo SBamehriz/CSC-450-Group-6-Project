@@ -29,6 +29,7 @@ from forge.schemas import (
     HfInspectResponse,
     HfSplitInfo,
 )
+from forge.storage import acquire_bucket_lock
 
 log = logging.getLogger(__name__)
 
@@ -393,10 +394,6 @@ def import_dataset(job_id: uuid.UUID) -> None:
             return
         payload = job.payload
         bucket_id = uuid.UUID(payload["target_id"])
-        bucket = session.get(Bucket, bucket_id)
-        if bucket is None:
-            raise ValueError("The collection this job was importing into no longer exists.")
-
         dataset_input = payload["dataset"]
         config = payload["config"]
         split = payload["split"]
@@ -406,21 +403,27 @@ def import_dataset(job_id: uuid.UUID) -> None:
         use = payload.get("use")
         pinned = job.result.get("revision")
 
+    with acquire_bucket_lock(bucket_id, timeout=5), Session(get_engine()) as session:
+        bucket = session.get(Bucket, bucket_id)
+        if bucket is None:
+            raise ValueError("The collection this job was importing into no longer exists.")
+
     # Resolve and pin to immutable commit revision; a retry keeps the first one
     canonical_id, resolved_revision = resolve_dataset(dataset_input)
     resolved_revision = pinned or resolved_revision
 
     # Save pinned source metadata onto collection
-    with Session(get_engine()) as session:
+    with acquire_bucket_lock(bucket_id, timeout=5), Session(get_engine()) as session:
         bucket = session.get(Bucket, bucket_id)
-        if bucket is not None:
-            bucket.source_dataset = canonical_id
-            bucket.resolved_revision = resolved_revision
-            bucket.dataset_config = config
-            bucket.dataset_split = split
-            bucket.text_column = text_column
-            bucket.import_limit = import_limit
-            session.commit()
+        if bucket is None:
+            raise ValueError("The collection this job was importing into no longer exists.")
+        bucket.source_dataset = canonical_id
+        bucket.resolved_revision = resolved_revision
+        bucket.dataset_config = config
+        bucket.dataset_split = split
+        bucket.text_column = text_column
+        bucket.import_limit = import_limit
+        session.commit()
 
     # Discover total if known
     total = 0
@@ -501,7 +504,9 @@ def import_dataset(job_id: uuid.UUID) -> None:
         if not rows:
             break
 
-        with Session(get_engine()) as session:
+        with acquire_bucket_lock(bucket_id, timeout=5), Session(get_engine()) as session:
+            if session.get(Bucket, bucket_id) is None:
+                raise ValueError("The collection this job was importing into no longer exists.")
             for item in rows:
                 row_dict = item.get("row", {})
                 row_idx = item.get("row_idx", offset)
@@ -965,7 +970,7 @@ def _import_from_parquet(
         joiner = f"{chatformat.EOS}\n" if use == "chat" else "\n\n"
         # imported rows get the light normalising only, never drop_repeated_lines
         cleaned = clean(normalise(joiner.join(pack)), mode="none")
-        with Session(get_engine()) as session:
+        with acquire_bucket_lock(bucket_id, timeout=5), Session(get_engine()) as session:
             bucket = session.get(Bucket, bucket_id)
             if bucket is None:
                 raise RuntimeError("The collection was deleted.")

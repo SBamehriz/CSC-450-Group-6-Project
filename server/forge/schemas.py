@@ -455,6 +455,7 @@ class RunOut(BaseModel):
     # waiting, preparing, training or finished, with a plain line about it
     stage: str = "training"
     stage_message: str = ""
+    stop_after_hours: float | None = None
     status: str
     device: str
     batch_size: int
@@ -473,6 +474,10 @@ class RunOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+
+
+class StopAfter(BaseModel):
+    hours: float | None = Field(default=None, gt=0, le=10_000)
 
 
 class CheckpointOut(BaseModel):

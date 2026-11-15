@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { api, type MetricPoint, type Run } from '../api/client';
@@ -7,7 +7,7 @@ import ExportButton from '../components/ExportButton';
 import LossChart from '../components/LossChart';
 import { Card, CardHead, Chip, Empty, ErrorBox, Notice, type Tone } from '../components/ui';
 import { bytesToSize, compactNumber, relativeDate } from '../lib/format';
-import { STATUS_WORDS, duration, isActive, secondsLeft } from '../lib/training';
+import { STATUS_WORDS, duration, isActive, secondsLeft, secondsToLimit } from '../lib/training';
 
 const STATUS_TONE: Record<string, Tone> = {
   completed: 'ok',
@@ -38,6 +38,7 @@ export default function RunDetailPage() {
   const { runId = '' } = useParams();
   const queryClient = useQueryClient();
   const [measuring, setMeasuring] = useState(false);
+  const [typed, setTyped] = useState<string | null>(null);
   const live = (run: Run | undefined) =>
     run && (isActive(run) || (measuring && (run.bpb === null || run.bpb === undefined)))
       ? POLL_MS
@@ -74,6 +75,21 @@ export default function RunDetailPage() {
     },
   });
 
+  const limit = useMutation({
+    mutationFn: (hours: number | null) => api.setStopAfter(runId, hours),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['run', runId], updated);
+      setTyped(null);
+    },
+  });
+
+  const ended = run.data ? !isActive(run.data) : false;
+  useEffect(() => {
+    if (!ended) return;
+    void queryClient.invalidateQueries({ queryKey: ['runCheckpoints', runId] });
+    void queryClient.invalidateQueries({ queryKey: ['runMetrics', runId] });
+  }, [ended, runId, queryClient]);
+
   const computeBpbMutation = useMutation({
     mutationFn: () => api.computeRunBpb(runId),
     onSuccess: () => {
@@ -100,6 +116,25 @@ export default function RunDetailPage() {
   const action = nextAction(r, savePoints.length);
   const left = isActive(r) ? secondsLeft(r) : null;
   const stopping = isActive(r) && change.isSuccess && change.variables === 'stop';
+  const saved = r.stop_after_hours ?? null;
+  const hours = typed === null ? saved : typed.trim() === '' ? null : Number(typed);
+  const changed =
+    typed !== null && hours !== saved && (hours === null || (hours > 0 && hours <= 10_000));
+  const toLimit = secondsToLimit(r);
+  const limitLine =
+    toLimit !== null
+      ? toLimit > 0
+        ? `Stops by itself in ${duration(toLimit)}.`
+        : 'Saving and stopping at its time limit.'
+      : saved && isActive(r)
+        ? 'The hours count from when training starts.'
+        : r.status === 'stopped' && r.metrics.time_limit_reached
+          ? 'It reached its time limit. Press Resume to go on.'
+          : null;
+  const go = (next: 'start' | 'stop' | 'resume') =>
+    changed && next !== 'stop'
+      ? limit.mutate(hours, { onSuccess: () => change.mutate(next) })
+      : change.mutate(next);
 
   return (
     <>
@@ -115,11 +150,35 @@ export default function RunDetailPage() {
             <button
               type="button"
               className={action === 'stop' ? 'btn' : 'btn btn-primary'}
-              disabled={change.isPending || stopping}
-              onClick={() => change.mutate(action)}
+              disabled={change.isPending || limit.isPending || stopping}
+              onClick={() => go(action)}
             >
               {stopping ? 'Stopping…' : ACTION_LABEL[action]}
             </button>
+          ) : null}
+          {action ? (
+            <form
+              className="stop-after"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (changed) limit.mutate(hours);
+              }}
+            >
+              <span>Stop after</span>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                step="any"
+                aria-label="Stop after this many hours"
+                value={typed ?? saved ?? ''}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+              <span>hours</span>
+              <button type="submit" className="btn btn-sm" disabled={!changed || limit.isPending}>
+                Set
+              </button>
+            </form>
           ) : null}
           {r.status === 'completed' ? (
             <span className="actions">
@@ -141,9 +200,11 @@ export default function RunDetailPage() {
           {r.started_at ? `, started ${relativeDate(r.started_at)}` : ''}.
           {r.fine_tune ? ` Fine-tuned from ${r.base_model_name ?? 'another model'}.` : null}
         </p>
+        {limitLine ? <p className="muted">{limitLine}</p> : null}
       </div>
 
       {change.error ? <Notice tone="bad">{change.error.message}</Notice> : null}
+      {limit.error ? <Notice tone="bad">{limit.error.message}</Notice> : null}
       {r.error ? <Notice tone="bad">{r.error}</Notice> : null}
 
       <Card>
@@ -299,7 +360,7 @@ export default function RunDetailPage() {
           Every measurement <span className="muted">({points.length.toLocaleString()})</span>
         </summary>
         <div className="scroll-x">
-          <table className="table document-table">
+          <table className="table">
             <thead>
               <tr>
                 <th>Step</th>

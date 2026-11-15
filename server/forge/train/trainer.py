@@ -216,6 +216,13 @@ def _set_run(run_id: uuid.UUID, **values) -> None:
             session.commit()
 
 
+def _time_is_up(run_id: uuid.UUID, began: float) -> bool:
+    with Session(get_engine()) as session:
+        run = session.get(Run, run_id)
+        hours = run.hyperparams.get("stop_after_hours") if run else None
+    return bool(hours) and time.perf_counter() - began > hours * 3600
+
+
 def _evaluate(
     model: GPT,
     validation: TokenFile,
@@ -444,6 +451,9 @@ def _train(job_id: uuid.UUID) -> dict:
             for step in range(start_step, settings.max_steps):
                 if step % REPORT_EVERY == 0:
                     report(job_id, step, settings.max_steps, "Training")
+                    if _time_is_up(run_id, began):
+                        _set_run(run_id, metrics={**facts, "time_limit_reached": True})
+                        raise Canceled()
                 rate = learning_rate(step, settings)
                 for group in optimizer.param_groups:
                     group["lr"] = rate

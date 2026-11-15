@@ -465,6 +465,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/runs/{run_id}/stop-after': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set Stop After */
+    put: operations['set_stop_after_api_runs__run_id__stop_after_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/runs/{run_id}/checkpoints': {
     parameters: {
       query?: never;
@@ -2542,6 +2559,8 @@ export interface components {
        * @default
        */
       stage_message: string;
+      /** Stop After Hours */
+      stop_after_hours?: number | null;
       /** Status */
       status: string;
       /** Device */
@@ -2684,6 +2703,11 @@ export interface components {
        * @default 0
        */
       bytes: number;
+    };
+    /** StopAfter */
+    StopAfter: {
+      /** Hours */
+      hours?: number | null;
     };
     /** TokenPreview */
     TokenPreview: {
@@ -3912,6 +3936,41 @@ export interface operations {
       cookie?: never;
     };
     requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RunOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  set_stop_after_api_runs__run_id__stop_after_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['StopAfter'];
+      };
+    };
     responses: {
       /** @description Successful Response */
       200: {

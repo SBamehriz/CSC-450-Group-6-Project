@@ -1543,6 +1543,22 @@ circle.chart-line-val {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.runs-table {
+  min-width: 760px;
+}
+.runs-table td:not(.name) {
+  white-space: nowrap;
+}
+.stop-after {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 0.875rem;
+  color: var(--ink-muted);
+}
+.stop-after .input {
+  width: 84px;
+}
 
 /* little label next to a name */
 .tag {

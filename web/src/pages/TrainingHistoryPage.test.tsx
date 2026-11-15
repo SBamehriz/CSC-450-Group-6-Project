@@ -156,3 +156,9 @@ it('successfully deletes a clean run upon confirmation', async () => {
     expect(deleteSpy).toHaveBeenCalledWith('run-2');
   });
 });
+
+it('does not squeeze its eight columns into the six-column file table', async () => {
+  showPage();
+  await screen.findByText('run-science-1');
+  expect(screen.getByRole('table').classList.contains('document-table')).toBe(false);
+});

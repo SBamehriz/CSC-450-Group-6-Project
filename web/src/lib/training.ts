@@ -11,6 +11,12 @@ export function secondsLeft(run: Run): number | null {
   return (steps * perStep) / run.tokens_per_sec;
 }
 
+export function secondsToLimit(run: Run, now = Date.now()): number | null {
+  if (!run.stop_after_hours || run.status !== 'running' || !run.started_at) return null;
+  const end = new Date(run.started_at).getTime() / 1000 + run.stop_after_hours * 3600;
+  return Math.max(0, end - now / 1000);
+}
+
 export function duration(seconds: number): string {
   if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`;
   const minutes = Math.round(seconds / 60);

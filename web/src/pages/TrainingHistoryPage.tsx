@@ -152,7 +152,7 @@ export default function TrainingHistoryPage() {
             }
           />
           <div className="scroll-x">
-            <table className="table document-table">
+            <table className="table runs-table">
               <thead>
                 <tr>
                   <th>Run</th>

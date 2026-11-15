@@ -182,6 +182,8 @@ export const api = {
   deleteRun: (id: string) => request<void>(`/runs/${id}`, { method: 'DELETE' }),
   changeRun: (id: string, action: 'start' | 'stop' | 'resume') =>
     request<Run>(`/runs/${id}/${action}`, { method: 'POST' }),
+  setStopAfter: (id: string, hours: number | null) =>
+    request<Run>(`/runs/${id}/stop-after`, { method: 'PUT', body: JSON.stringify({ hours }) }),
   listCheckpoints: (id: string) => request<Checkpoint[]>(`/runs/${id}/checkpoints`),
   checkpointDownloadUrl: (id: string) => `${API_PREFIX}/checkpoints/${id}/download`,
   getRunMetrics: (id: string, limit?: number) => {

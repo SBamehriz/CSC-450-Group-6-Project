@@ -349,3 +349,47 @@ def test_cancelled_run_keeps_only_whole_save_points(
     rows = list(db.scalars(select(Checkpoint).where(Checkpoint.run_id == uuid.UUID(run["id"]))))
     assert {p.name for p in folder.iterdir()} == {row.uri.rsplit("/", 1)[-1] for row in rows}
     assert db.scalar(select(MetricPoint.step).order_by(MetricPoint.step.desc())) == 15
+
+
+def test_a_time_limit_saves_and_stops_and_resume_goes_on(client, db, training_set, monkeypatch):
+    run = make_run(client, make_model(client, training_set), training_set, save_every=100)
+    real_report = jobs.report
+
+    def limit_at_ten(job_id, completed, total, message):
+        if completed == 10:
+            row = db.get(Run, uuid.UUID(run["id"]))
+            row.hyperparams = {**row.hyperparams, "stop_after_hours": 1e-12}
+            db.commit()
+        real_report(job_id, completed, total, message)
+
+    monkeypatch.setattr(trainer, "report", limit_at_ten)
+    stopped = train(client, run)
+    assert stopped["status"] == "stopped", stopped
+    assert stopped["current_step"] == 10
+    assert stopped["metrics"]["time_limit_reached"] is True
+    saves = client.get(f"/api/runs/{run['id']}/checkpoints").json()
+    assert [save["step"] for save in saves] == [10]
+    monkeypatch.setattr(trainer, "report", real_report)
+
+    kept = client.put(f"/api/runs/{run['id']}/stop-after", json={"hours": 2.5}).json()
+    assert kept["stop_after_hours"] == 2.5
+    resumed = train(client, run, "resume")
+    assert resumed["status"] == "completed", resumed
+    assert resumed["current_step"] == 20
+    assert resumed["stop_after_hours"] == 2.5
+    assert "time_limit_reached" not in resumed["metrics"]
+
+
+def test_a_time_limit_can_be_set_changed_and_cleared(client, training_set):
+    run = make_run(client, make_model(client, training_set), training_set)
+    assert run["stop_after_hours"] is None
+    where = f"/api/runs/{run['id']}/stop-after"
+    assert client.put(where, json={"hours": 30}).json()["stop_after_hours"] == 30
+    assert client.get(f"/api/runs/{run['id']}").json()["stop_after_hours"] == 30
+    cleared = client.put(where, json={"hours": None}).json()
+    assert cleared["stop_after_hours"] is None
+    assert "stop_after_hours" not in cleared["hyperparams"]
+    assert cleared["settings"]["max_steps"] == 20
+    assert client.put(where, json={"hours": 0}).status_code == 422
+    assert client.put(where, json={"hours": -3}).status_code == 422
+    assert client.put(f"/api/runs/{uuid.uuid4()}/stop-after", json={"hours": 1}).status_code == 404

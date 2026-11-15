@@ -34,6 +34,7 @@ from forge.schemas import (
     RunCreate,
     RunMetricsOut,
     RunOut,
+    StopAfter,
 )
 from forge.train.metrics import get_best_validation_loss, get_metric_points
 from forge.train.settings import TrainSettings, steps_for_tokens
@@ -92,6 +93,7 @@ def _run_to_out(run: Run, session: Session) -> RunOut:
         base_model_name=base.name if base else None,
         stage=stage,
         stage_message=stage_message,
+        stop_after_hours=run.hyperparams.get("stop_after_hours"),
         id=run.id,
         name=run.name,
         model_id=run.model_id,
@@ -338,6 +340,17 @@ def resume_run(run_id: uuid.UUID, session: Session = Depends(get_session)) -> Ru
     if not session.scalar(select(Checkpoint.id).where(Checkpoint.run_id == run.id)):
         raise ApiError(409, "no_save_point", "There is no save point yet. Start the run instead.")
     _queue(session, run, resume=True)
+    return _run_to_out(run, session)
+
+
+@router.put("/runs/{run_id}/stop-after", response_model=RunOut)
+def set_stop_after(
+    run_id: uuid.UUID, payload: StopAfter, session: Session = Depends(get_session)
+) -> RunOut:
+    run = _load_run(session, run_id)
+    rest = {key: value for key, value in run.hyperparams.items() if key != "stop_after_hours"}
+    run.hyperparams = {**rest, "stop_after_hours": payload.hours} if payload.hours else rest
+    session.commit()
     return _run_to_out(run, session)
 
 

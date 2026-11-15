@@ -28,6 +28,7 @@ from forge.train.settings import TrainSettings, learning_rate
 
 CHECKPOINT_FORMAT = "forge-gpt-v1"
 REPORT_EVERY = 5
+SAVE_EVERY_S = 3600
 
 
 class TokenFile:
@@ -447,7 +448,7 @@ def _train(job_id: uuid.UUID) -> dict:
 
     try:
         with MetricBuffer(open_session, run_id, batch_size=20) as buffer:
-            began = time.perf_counter()
+            began = saved_at = time.perf_counter()
             for step in range(start_step, settings.max_steps):
                 if step % REPORT_EVERY == 0:
                     report(job_id, step, settings.max_steps, "Training")
@@ -526,8 +527,10 @@ def _train(job_id: uuid.UUID) -> dict:
                         tokens_per_sec=speed,
                     )
                 step = done
-                if done % settings.save_every == 0 or done == settings.max_steps:
+                due = time.perf_counter() - saved_at >= SAVE_EVERY_S
+                if due or done % settings.save_every == 0 or done == settings.max_steps:
                     save(val)
+                    saved_at = time.perf_counter()
     except Canceled:
         if step > start_step:
             save(None)

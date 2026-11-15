@@ -393,3 +393,27 @@ def test_a_time_limit_can_be_set_changed_and_cleared(client, training_set):
     assert client.put(where, json={"hours": 0}).status_code == 422
     assert client.put(where, json={"hours": -3}).status_code == 422
     assert client.put(f"/api/runs/{uuid.uuid4()}/stop-after", json={"hours": 1}).status_code == 404
+
+
+def test_a_long_gap_between_save_points_adds_one(client, training_set, monkeypatch):
+    saved = []
+    real_save = trainer.save_point
+
+    def remember(run_id, step, *rest):
+        saved.append(step)
+        return real_save(run_id, step, *rest)
+
+    monkeypatch.setattr(trainer, "save_point", remember)
+    model = make_model(client, training_set)
+    usual = make_run(client, model, training_set, name="usual", save_every=100)
+    assert train(client, usual)["status"] == "completed"
+    assert saved == [20]
+
+    saved.clear()
+    monkeypatch.setattr(trainer, "SAVE_EVERY_S", 0)
+    often = make_run(client, model, training_set, name="often", save_every=100)
+    done = train(client, often)
+    assert done["status"] == "completed", done
+    assert saved == list(range(1, 21))
+    steps = [save["step"] for save in client.get(f"/api/runs/{often['id']}/checkpoints").json()]
+    assert steps[0] == 20 and len(steps) <= 2

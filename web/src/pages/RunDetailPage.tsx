@@ -306,7 +306,7 @@ export default function RunDetailPage() {
           {!savePoints.length ? (
             <Empty
               title="No save points yet"
-              hint={`One is kept every ${(r.settings?.save_every ?? 200).toLocaleString()} steps, at the end, and when you stop.`}
+              hint={`One is kept every ${(r.settings?.save_every ?? 200).toLocaleString()} steps or once an hour, at the end, and when you stop.`}
             />
           ) : (
             <div className="scroll-x">

@@ -142,7 +142,9 @@ def test_the_amount_of_text_comes_from_the_newest_training_set_else_a_guess(
     make_document(bucket.id, chars=4000)
     make_document(bucket.id, chars=400, status="failed")
     assert planner.estimate_tokens(db, bucket.id) == (1000, False)
-    snapshot = Dataset(name="snap", bucket_id=bucket.id, status="ready")
+    snapshot = Dataset(
+        name="snap", bucket_id=bucket.id, status="ready", doc_count=1, char_count=4000
+    )
     db.add(snapshot)
     db.flush()
     vocabulary = Tokenizer(
@@ -163,6 +165,8 @@ def test_the_amount_of_text_comes_from_the_newest_training_set_else_a_guess(
     )
     db.commit()
     assert planner.estimate_tokens(db, bucket.id) == (777, True)
+    make_document(bucket.id, chars=8000)
+    assert planner.estimate_tokens(db, bucket.id) == (2331, False)
 
 
 def test_a_new_model_plan_explains_every_choice(db, text, computer):

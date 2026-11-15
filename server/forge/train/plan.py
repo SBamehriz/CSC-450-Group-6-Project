@@ -57,6 +57,11 @@ class Computer:
 
 def estimate_tokens(session: Session, bucket_id: uuid.UUID) -> tuple[int, bool]:
     """Training word pieces in a collection, and whether that is counted or a guess."""
+    docs, chars = session.execute(
+        select(func.count(Document.id), func.coalesce(func.sum(Document.char_count), 0)).where(
+            Document.bucket_id == bucket_id, Document.status == "parsed"
+        )
+    ).one()
     snapshot = session.scalar(
         select(Dataset)
         .where(Dataset.bucket_id == bucket_id, Dataset.status == "ready")
@@ -69,14 +74,11 @@ def estimate_tokens(session: Session, bucket_id: uuid.UUID) -> tuple[int, bool]:
             .order_by(DatasetBuild.created_at.desc())
         )
         counted = (build.stats.get("train") or {}).get("tokens") if build else None
-        if counted:
+        if counted and (snapshot.doc_count, snapshot.char_count) == (docs, chars):
             return int(counted), True
-    chars = session.scalar(
-        select(func.coalesce(func.sum(Document.char_count), 0)).where(
-            Document.bucket_id == bucket_id, Document.status == "parsed"
-        )
-    )
-    return int(chars or 0) // CHARS_PER_TOKEN, False
+        if counted and snapshot.char_count:
+            return int(chars * counted / snapshot.char_count), False
+    return int(chars) // CHARS_PER_TOKEN, False
 
 
 def window_and_vocabulary(parameters: float) -> tuple[int, int]:
@@ -424,9 +426,7 @@ def plan(session: Session, request: PlanRequest) -> PlanOut:
             f"size: add {_count(max(0, enough - tokens))} more, or choose a smaller model."
         )
     if tokens is not None and not exact:
-        warnings.append(
-            "The amount of text is a guess until it has been prepared for training once."
-        )
+        warnings.append("The amount of text is a guess until it is prepared for training.")
 
     cards = len(here.cards)
     share = math.ceil(batch / max(1, cards))

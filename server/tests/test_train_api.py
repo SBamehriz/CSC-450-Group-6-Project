@@ -104,6 +104,27 @@ def test_a_ready_snapshot_vocabulary_and_training_set_are_reused(client, db):
     assert kinds(db)[5:] == ["snapshot_create", "tokenizer_train", "dataset_build", "train_run"]
 
 
+def test_the_count_of_a_collection_is_a_guess_again_after_text_is_added(client, db):
+    from forge.train.plan import estimate_tokens
+
+    bucket = add_source(client)
+    bucket_id = uuid.UUID(bucket["id"])
+    assert create(client, bucket).status_code == 201
+    assert jobs.run_pending() == 4
+    counted, exact = estimate_tokens(db, bucket_id)
+    assert exact and counted > 0
+    files = [("files", ("more.txt", b"Another lesson with new words. " * 300, "text/plain"))]
+    client.post(f"/api/buckets/{bucket['id']}/documents", files=files)
+    db.expire_all()
+    guessed, exact = estimate_tokens(db, bucket_id)
+    assert not exact and guessed > counted
+    assert create(client, bucket, name="second").status_code == 201
+    assert jobs.run_pending() == 4
+    db.expire_all()
+    recounted, exact = estimate_tokens(db, bucket_id)
+    assert exact and recounted > counted
+
+
 def test_a_run_needs_text_a_free_name_and_a_good_shape(client, db):
     empty = client.post("/api/buckets", json={"name": "empty"}).json()
     assert create(client, empty).json()["error"]["code"] == "no_text"

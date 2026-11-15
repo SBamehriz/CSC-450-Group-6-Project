@@ -794,7 +794,7 @@ class PlanRequest(BaseModel):
 
 
 class PlanData(BaseModel):
-    # tokens in the collection; a guess until it has been prepared once
+    # tokens in the collection; a guess until it is prepared
     tokens: int | None
     exact: bool
     passes: float | None

@@ -195,6 +195,65 @@ def get_model(
     if not model:
         raise ApiError(404, "not_found", "Model not found.")
     return _model_to_out(model)
+@router.delete("/models/all", status_code=204)
+def delete_all_models(
+    confirm: bool = False,
+    session: Session = Depends(get_session),
+) -> Response:
+    """Delete all unreferenced models, or refuse without changing any records.
+
+    Runs and saved evaluations are intentionally not erased by this endpoint.
+    """
+    if not confirm:
+        return Response(
+            content='{"detail":"Confirmation required"}',
+            status_code=400,
+            media_type="application/json",
+        )
+
+    models = session.scalars(select(Model)).all()
+    if not models:
+        return Response(status_code=204)
+
+    # Check all dependencies before changing anything: no partial deletion.
+    if (
+        session.scalar(select(func.count(Run.id)))
+        or session.scalar(select(func.count(Evaluation.id)))
+        or session.scalar(select(func.count(EvalResult.id)).where(EvalResult.model_id.is_not(None)))
+        or session.scalar(select(func.count(EvalResult.id)).where(EvalResult.checkpoint_id.is_not(None)))
+        or session.scalar(select(func.count(BpbEvaluation.id)).where(BpbEvaluation.model_id.is_not(None)))
+        or session.scalar(select(func.count(BpbEvaluation.id)).where(BpbEvaluation.checkpoint_id.is_not(None)))
+    ):
+        raise ApiError(
+            409,
+            "models_in_use",
+            "Cannot delete all models while training runs or saved evaluations reference models. "
+            "Remove dependent records first.",
+        )
+
+    folders = [
+        get_settings().data_dir / model.artifact_uri
+        for model in models
+        if model.artifact_uri
+    ]
+    try:
+        for model in models:
+            session.delete(model)
+        session.commit()
+    except IntegrityError as err:
+        session.rollback()
+        raise ApiError(
+            409, "models_in_use", "Some models are still referenced by other records."
+        ) from err
+
+    for model in models:
+        unload_models(model.id)
+    data_dir = get_settings().data_dir.resolve()
+    for folder in folders:
+        resolved = folder.resolve()
+        if resolved != data_dir and data_dir in resolved.parents and resolved.is_dir():
+            shutil.rmtree(resolved, ignore_errors=True)
+    return Response(status_code=204)
 
 
 @router.delete("/models/{model_id}", status_code=204)

@@ -328,7 +328,14 @@ def move_document(
     document_id: uuid.UUID, payload: MoveDocument, session: Session = Depends(get_session)
 ) -> DocumentOut:
     document = _load(session, document_id)
-    _require_bucket(session, payload.bucket_id)
+
+    source_bucket = _require_bucket(session, document.bucket_id)
+    target_bucket = _require_bucket(session, payload.bucket_id)
+
+    if document.bucket_id != payload.bucket_id:
+        clash = kind_problem(session, target_bucket, source_bucket.kind)
+        if clash:
+            raise ApiError(409, "kind_mismatch", clash)
 
     if payload.bucket_id != document.bucket_id and document.content_hash:
         # dedup is per bucket

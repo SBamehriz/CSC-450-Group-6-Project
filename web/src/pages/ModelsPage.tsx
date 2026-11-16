@@ -57,6 +57,17 @@ export default function ModelsPage() {
     },
   });
 
+  const deleteAllModels = useMutation({
+    mutationFn: () => api.deleteAllModels(),
+    onSuccess: () => {
+      setDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ['models'] });
+    },
+    onError: (err: Error) => {
+      setDeleteError(err.message);
+    },
+  });
+
   const toggleResultExpand = (id: string) => {
     setExpandedResultIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -120,16 +131,25 @@ export default function ModelsPage() {
         <CardHead
           title="Saved models"
           end={
-            <input
-              type="search"
-              className="input input-sm"
-              placeholder="Filter models…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ maxWidth: 220 }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                type="search"
+                className="input input-sm"
+                placeholder="Filter models…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ maxWidth: 220 }}
+              />
+              <ConfirmButton
+                label="Delete All Models"
+                confirmLabel="Delete all saved models?"
+                onConfirm={() => deleteAllModels.mutate()}
+                disabled={deleteAllModels.isPending || models.isPending}
+              />
+            </div>
           }
         />
+
         <div className="card-body">
           {deleteError ? (
             <div style={{ marginBottom: 12 }}>

@@ -1,9 +1,8 @@
-
-from xml.parsers.expat import model
-
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+
 from forge.models import Bucket
+
 
 def test_delete_all_models_requires_confirmation(client: TestClient):
     """Bulk deletion must reject requests without confirmation."""
@@ -19,14 +18,20 @@ def test_delete_all_models_empty_database(client: TestClient):
 
 
 def test_delete_all_models_does_not_delete_unrelated_data(client: TestClient, db):
-    from forge.models import Bucket, Model
-    from sqlalchemy import select
     import uuid
+
+    from sqlalchemy import select
+
+    from forge.models import Model
 
     bucket = Bucket(name=f"keep-{uuid.uuid4()}")
     model = Model(
-        name=f"remove-{uuid.uuid4()}", n_layer=2, d_model=128,
-        n_head=4, ctx_len=512, vocab_size=4096,
+        name=f"remove-{uuid.uuid4()}",
+        n_layer=2,
+        d_model=128,
+        n_head=4,
+        ctx_len=512,
+        vocab_size=4096,
     )
     db.add_all([bucket, model])
     db.commit()
@@ -40,19 +45,22 @@ def test_delete_all_models_does_not_delete_unrelated_data(client: TestClient, db
 
 
 def test_delete_all_models_rejects_referenced_models(client: TestClient, db):
-    from forge.models import Model, Run
-    from sqlalchemy import select
     import uuid
 
+    from forge.models import Model, Run
+
     model = Model(
-        name=f"protected-{uuid.uuid4()}", n_layer=2, d_model=128,
-        n_head=4, ctx_len=512, vocab_size=4096,
+        name=f"protected-{uuid.uuid4()}",
+        n_layer=2,
+        d_model=128,
+        n_head=4,
+        ctx_len=512,
+        vocab_size=4096,
     )
     db.add(model)
     db.flush()
     run = Run(name="keep-run", model_id=model.id)
     db.add(run)
-
 
     db.commit()
     model_id = model.id

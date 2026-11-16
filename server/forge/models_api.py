@@ -195,6 +195,8 @@ def get_model(
     if not model:
         raise ApiError(404, "not_found", "Model not found.")
     return _model_to_out(model)
+
+
 @router.delete("/models/all", status_code=204)
 def delete_all_models(
     confirm: bool = False,
@@ -220,9 +222,15 @@ def delete_all_models(
         session.scalar(select(func.count(Run.id)))
         or session.scalar(select(func.count(Evaluation.id)))
         or session.scalar(select(func.count(EvalResult.id)).where(EvalResult.model_id.is_not(None)))
-        or session.scalar(select(func.count(EvalResult.id)).where(EvalResult.checkpoint_id.is_not(None)))
-        or session.scalar(select(func.count(BpbEvaluation.id)).where(BpbEvaluation.model_id.is_not(None)))
-        or session.scalar(select(func.count(BpbEvaluation.id)).where(BpbEvaluation.checkpoint_id.is_not(None)))
+        or session.scalar(
+            select(func.count(EvalResult.id)).where(EvalResult.checkpoint_id.is_not(None))
+        )
+        or session.scalar(
+            select(func.count(BpbEvaluation.id)).where(BpbEvaluation.model_id.is_not(None))
+        )
+        or session.scalar(
+            select(func.count(BpbEvaluation.id)).where(BpbEvaluation.checkpoint_id.is_not(None))
+        )
     ):
         raise ApiError(
             409,
@@ -232,9 +240,7 @@ def delete_all_models(
         )
 
     folders = [
-        get_settings().data_dir / model.artifact_uri
-        for model in models
-        if model.artifact_uri
+        get_settings().data_dir / model.artifact_uri for model in models if model.artifact_uri
     ]
     try:
         for model in models:

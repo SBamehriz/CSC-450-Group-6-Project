@@ -57,16 +57,16 @@ export default function ModelsPage() {
     },
   });
 
-const deleteAllModels = useMutation({
-  mutationFn: () => api.deleteAllModels(),
-  onSuccess: () => {
-    setDeleteError(null);
-    void queryClient.invalidateQueries({ queryKey: ['models'] });
-  },
-  onError: (err: Error) => {
-    setDeleteError(err.message);
-  },
-});
+  const deleteAllModels = useMutation({
+    mutationFn: () => api.deleteAllModels(),
+    onSuccess: () => {
+      setDeleteError(null);
+      void queryClient.invalidateQueries({ queryKey: ['models'] });
+    },
+    onError: (err: Error) => {
+      setDeleteError(err.message);
+    },
+  });
 
   const toggleResultExpand = (id: string) => {
     setExpandedResultIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -128,29 +128,27 @@ const deleteAllModels = useMutation({
 
       {/* Saved Models List Card (SP8.9) */}
       <Card>
-
-<CardHead
-  title="Saved models"
-  end={
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <input
-        type="search"
-        className="input input-sm"
-        placeholder="Filter models…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ maxWidth: 220 }}
-      />
-      <ConfirmButton
-        label="Delete All Models"
-        confirmLabel="Delete all saved models?"
-        onConfirm={() => deleteAllModels.mutate()}
-        disabled={deleteAllModels.isPending || models.isPending}
-      />
-    </div>
-  }
-/>
-
+        <CardHead
+          title="Saved models"
+          end={
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                type="search"
+                className="input input-sm"
+                placeholder="Filter models…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ maxWidth: 220 }}
+              />
+              <ConfirmButton
+                label="Delete All Models"
+                confirmLabel="Delete all saved models?"
+                onConfirm={() => deleteAllModels.mutate()}
+                disabled={deleteAllModels.isPending || models.isPending}
+              />
+            </div>
+          }
+        />
 
         <div className="card-body">
           {deleteError ? (
@@ -366,8 +364,7 @@ const deleteAllModels = useMutation({
                 <div className="stack">
                   {filtered.map((r) => {
                     const isExpanded = Boolean(expandedResultIds[r.id]);
-                    const isLongPrompt = (r.prompt?.length ?? 0) >
-                    120;
+                    const isLongPrompt = (r.prompt?.length ?? 0) > 120;
                     const isLongAnswer = (r.answer?.length ?? 0) > 180;
                     const needsToggle =
                       r.result_type === 'prompt' && (isLongPrompt || isLongAnswer);

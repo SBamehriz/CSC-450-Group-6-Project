@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from forge.config import get_settings
 from forge.dataset_import import kind_problem
 from forge.db import get_session
 from forge.errors import ApiError
@@ -28,14 +29,6 @@ from forge.schemas import (
     UploadOutcome,
     UploadResult,
 )
-from forge.storage import (
-    files_root,
-    require_bucket_lock,
-    require_bucket_locks,
-    resolve_storage_file,
-    unlink_storage_file,
-    write_storage_file,
-)
 
 router = APIRouter(tags=["documents"])
 
@@ -45,15 +38,18 @@ MAX_TEXT_WINDOW = 200_000
 
 
 def _storage_root() -> Path:
-    return files_root()
+    return get_settings().data_dir / "files"
 
 
 def _write(relative: str, data: bytes) -> str:
-    return write_storage_file(relative, data)
+    path = _storage_root() / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return relative
 
 
 def _read_text(relative: str, offset: int, length: int) -> tuple[str, int]:
-    path = resolve_storage_file(relative)
+    path = _storage_root() / relative
     if not path.is_file():
         raise ApiError(404, "not_found", "The cleaned text for this document is missing.")
     text = path.read_text(encoding="utf-8")
@@ -61,7 +57,9 @@ def _read_text(relative: str, offset: int, length: int) -> tuple[str, int]:
 
 
 def _delete(relative: str | None) -> None:
-    unlink_storage_file(relative)
+    if not relative:
+        return
+    (_storage_root() / relative).unlink(missing_ok=True)
 
 
 def _to_out(document: Document) -> DocumentOut:
@@ -102,6 +100,8 @@ def upload_documents(
     source_note: str = Form(default=""),
     session: Session = Depends(get_session),
 ) -> UploadResult:
+    _require_bucket(session, bucket_id)
+
     if len(files) > MAX_FILES_PER_REQUEST:
         raise ApiError(
             400,
@@ -110,36 +110,32 @@ def upload_documents(
             f"{MAX_FILES_PER_REQUEST}. Split it into smaller batches.",
         )
 
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        _require_bucket(session, bucket_id)
-
-        outcomes: list[UploadOutcome] = []
-        for upload in files:
-            name = upload.filename or "unnamed"
-            raw = upload.file.read()
-            if len(raw) > MAX_FILE_BYTES:
-                outcomes.append(
-                    UploadOutcome(
-                        filename=name,
-                        status="failed",
-                        error=f"{len(raw) / 1e6:.1f} MB is over the "
-                        f"{MAX_FILE_BYTES // (1024 * 1024)} MB limit for one file.",
-                    )
-                )
-                continue
-            outcomes.extend(
-                _ingest_one(
-                    session,
-                    bucket_id,
-                    name,
-                    raw,
-                    source_note,
-                    content_type=upload.content_type,
+    outcomes: list[UploadOutcome] = []
+    for upload in files:
+        name = upload.filename or "unnamed"
+        raw = upload.file.read()
+        if len(raw) > MAX_FILE_BYTES:
+            outcomes.append(
+                UploadOutcome(
+                    filename=name,
+                    status="failed",
+                    error=f"{len(raw) / 1e6:.1f} MB is over the "
+                    f"{MAX_FILE_BYTES // (1024 * 1024)} MB limit for one file.",
                 )
             )
+            continue
+        outcomes.extend(
+            _ingest_one(
+                session,
+                bucket_id,
+                name,
+                raw,
+                source_note,
+                content_type=upload.content_type,
+            )
+        )
 
-        session.commit()
+    session.commit()
     parsed = sum(1 for outcome in outcomes if outcome.status == "parsed")
     return UploadResult(parsed=parsed, failed=len(outcomes) - parsed, outcomes=outcomes)
 
@@ -331,32 +327,33 @@ def get_document_text(
 def move_document(
     document_id: uuid.UUID, payload: MoveDocument, session: Session = Depends(get_session)
 ) -> DocumentOut:
-    initial = _load(session, document_id)
-    source_bucket_id = initial.bucket_id
-    with require_bucket_locks((source_bucket_id, payload.bucket_id)):
-        session.rollback()
-        document = _load(session, document_id)
-        if document.bucket_id != source_bucket_id:
-            raise ApiError(409, "bucket_busy", "This document was moved concurrently. Try again.")
-        _require_bucket(session, payload.bucket_id)
+    document = _load(session, document_id)
 
-        if payload.bucket_id != document.bucket_id and document.content_hash:
-            # dedup is per bucket
-            twin = session.execute(
-                select(Document).where(
-                    Document.bucket_id == payload.bucket_id,
-                    Document.content_hash == document.content_hash,
-                )
-            ).scalar_one_or_none()
-            if twin is not None:
-                raise ApiError(
-                    409,
-                    "duplicate_in_target",
-                    f"That bucket already has this exact text, as {twin.filename}.",
-                )
+    source_bucket = _require_bucket(session, document.bucket_id)
+    target_bucket = _require_bucket(session, payload.bucket_id)
 
-        document.bucket_id = payload.bucket_id
-        session.commit()
+    if document.bucket_id != payload.bucket_id:
+        clash = kind_problem(session, target_bucket, source_bucket.kind)
+        if clash:
+            raise ApiError(409, "kind_mismatch", clash)
+
+    if payload.bucket_id != document.bucket_id and document.content_hash:
+        # dedup is per bucket
+        twin = session.execute(
+            select(Document).where(
+                Document.bucket_id == payload.bucket_id,
+                Document.content_hash == document.content_hash,
+            )
+        ).scalar_one_or_none()
+        if twin is not None:
+            raise ApiError(
+                409,
+                "duplicate_in_target",
+                f"That bucket already has this exact text, as {twin.filename}.",
+            )
+
+    document.bucket_id = payload.bucket_id
+    session.commit()
     return _to_out(document)
 
 
@@ -364,39 +361,27 @@ def move_document(
 def reject_document(
     document_id: uuid.UUID, payload: RejectDocument, session: Session = Depends(get_session)
 ) -> DocumentOut:
-    initial = _load(session, document_id)
-    bucket_id = initial.bucket_id
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        document = _load(session, document_id)
-        if document.bucket_id != bucket_id:
-            raise ApiError(409, "bucket_busy", "This document was moved concurrently. Try again.")
-        document.status = "rejected"
-        document.error = payload.reason or "Rejected by hand."
-        # free the hash for a better copy
-        document.content_hash = None
-        session.commit()
+    document = _load(session, document_id)
+    document.status = "rejected"
+    document.error = payload.reason or "Rejected by hand."
+    # free the hash for a better copy
+    document.content_hash = None
+    session.commit()
     return _to_out(document)
 
 
 @router.delete("/documents/{document_id}", status_code=204)
 def delete_document(document_id: uuid.UUID, session: Session = Depends(get_session)) -> Response:
-    initial = _load(session, document_id)
-    bucket_id = initial.bucket_id
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        document = _load(session, document_id)
-        if document.bucket_id != bucket_id:
-            raise ApiError(409, "bucket_busy", "This document was moved concurrently. Try again.")
-        text_uri, raw_uri = document.text_uri, document.raw_uri
-        session.delete(document)
-        session.commit()
+    document = _load(session, document_id)
+    text_uri, raw_uri = document.text_uri, document.raw_uri
+    session.delete(document)
+    session.commit()
 
-        _delete(text_uri)
-        # jsonl documents share one raw file
-        still_used = session.execute(
-            select(func.count()).select_from(Document).where(Document.raw_uri == raw_uri)
-        ).scalar_one()
-        if not still_used:
-            _delete(raw_uri)
+    _delete(text_uri)
+    # jsonl documents share one raw file
+    still_used = session.execute(
+        select(func.count()).select_from(Document).where(Document.raw_uri == raw_uri)
+    ).scalar_one()
+    if not still_used:
+        _delete(raw_uri)
     return Response(status_code=204)

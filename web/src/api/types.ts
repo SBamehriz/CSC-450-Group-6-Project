@@ -393,6 +393,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/models/all': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete All Models
+     * @description Delete all unreferenced models, or refuse without changing any records.
+     *
+     *     Runs and saved evaluations are intentionally not erased by this endpoint.
+     */
+    delete: operations['delete_all_models_api_models_all_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/models/import': {
     parameters: {
       query?: never;
@@ -3844,6 +3866,35 @@ export interface operations {
       path: {
         model_id: string;
       };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_all_models_api_models_all_delete: {
+    parameters: {
+      query?: {
+        confirm?: boolean;
+      };
+      header?: never;
+      path?: never;
       cookie?: never;
     };
     requestBody?: never;

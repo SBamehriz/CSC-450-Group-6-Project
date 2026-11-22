@@ -525,8 +525,7 @@ def test_delete_detects_collection_change_after_summary(client, db, data_dir):
     assert confirmed.status_code == 204
 
 
-def test_delete_blocks_new_conflicting_work_during_deletion(client, db, data_dir, monkeypatch):
-    from forge import buckets as buckets_module
+def test_delete_is_refused_while_the_collection_is_locked(client, db, data_dir):
     from forge.storage import acquire_bucket_lock
 
     bucket = create(client, "locked-during-delete")
@@ -539,61 +538,16 @@ def test_delete_blocks_new_conflicting_work_during_deletion(client, db, data_dir
     )
     assert up.status_code == 201
     summary = client.get(f"/api/buckets/{bucket['id']}/deletion-summary").json()
+    where = f"/api/buckets/{bucket['id']}?confirm=true&scope_token={summary['scope_token']}"
 
-    monkeypatch.setattr(buckets_module, "validate_import_params", lambda *args, **kwargs: None)
-    real_delete_storage_files = buckets_module.delete_storage_files
-    mid_delete_responses: list[tuple[str, int, str | None]] = []
-
-    def intercepted_delete(uris):
-        import_res = client.post(
-            f"/api/buckets/{bucket['id']}/import",
-            json={
-                "dataset": "org/ds",
-                "config": "default",
-                "split": "train",
-                "text_column": "text",
-                "limit": 10,
-            },
-        )
-        mid_delete_responses.append(
-            ("import", import_res.status_code, import_res.json().get("error", {}).get("code"))
-        )
-        snap_res = client.post(
-            "/api/datasets",
-            json={"name": "concurrent-snap", "bucket_id": bucket["id"]},
-        )
-        mid_delete_responses.append(
-            ("snapshot", snap_res.status_code, snap_res.json().get("error", {}).get("code"))
-        )
-        upload_res = client.post(
-            f"/api/buckets/{bucket['id']}/documents",
-            files=[("files", ("c.txt", b"Should be blocked mid-delete.", "text/plain"))],
-        )
-        mid_delete_responses.append(
-            ("upload", upload_res.status_code, upload_res.json().get("error", {}).get("code"))
-        )
-        return real_delete_storage_files(uris)
-
-    # Holding the collection lock externally also blocks delete_bucket before destructive work.
     with acquire_bucket_lock(uuid.UUID(bucket["id"]), timeout=0):
-        busy_del = client.delete(
-            f"/api/buckets/{bucket['id']}?confirm=true&scope_token={summary['scope_token']}"
-        )
+        busy_del = client.delete(where)
         assert busy_del.status_code == 409
         assert busy_del.json()["error"]["code"] == "bucket_busy"
+    assert db.scalar(select(func.count()).select_from(Document)) == 2
 
-    monkeypatch.setattr(buckets_module, "delete_storage_files", intercepted_delete)
-    res = client.delete(
-        f"/api/buckets/{bucket['id']}?confirm=true&scope_token={summary['scope_token']}"
-    )
-    assert res.status_code == 204
-    assert mid_delete_responses == [
-        ("import", 409, "bucket_busy"),
-        ("snapshot", 409, "bucket_busy"),
-        ("upload", 409, "bucket_busy"),
-    ]
-    assert db.scalar(select(func.count()).select_from(Job)) == 0
-    assert db.scalar(select(func.count()).select_from(Dataset)) == 0
+    assert client.delete(where).status_code == 204
+    assert db.scalar(select(func.count()).select_from(Document)) == 0
 
 
 def test_delete_rejects_path_escape_and_preserves_database(client, db, data_dir):

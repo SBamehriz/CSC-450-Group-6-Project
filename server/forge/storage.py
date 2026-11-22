@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
@@ -90,21 +90,6 @@ def resolve_storage_file(relative: str | None) -> Path:
             f"Storage path must refer to a file, not a directory: {relative!r}"
         )
     return resolved
-
-
-def write_storage_file(relative: str, data: bytes) -> str:
-    """Write bytes to a validated relative path inside ``files_root()``."""
-    target = resolve_storage_file(relative)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
-    return relative
-
-
-def unlink_storage_file(relative: str | None) -> None:
-    """Safely unlink one relative storage file if present."""
-    if not relative:
-        return
-    resolve_storage_file(relative).unlink(missing_ok=True)
 
 
 def account_storage_files(
@@ -251,16 +236,6 @@ def acquire_bucket_lock(bucket_id: uuid.UUID, *, timeout: float = 0) -> Iterator
 
 
 @contextmanager
-def acquire_bucket_locks(bucket_ids: Iterable[uuid.UUID], *, timeout: float = 0) -> Iterator[None]:
-    """Acquire multiple collection locks in canonical order to prevent deadlocks."""
-    ordered_ids = sorted(set(bucket_ids), key=lambda value: str(value))
-    with ExitStack() as stack:
-        for bucket_id in ordered_ids:
-            stack.enter_context(acquire_bucket_lock(bucket_id, timeout=timeout))
-        yield
-
-
-@contextmanager
 def require_bucket_lock(
     bucket_id: uuid.UUID,
     *,
@@ -273,24 +248,6 @@ def require_bucket_lock(
     """Acquire a single collection lock for an HTTP handler or raise 409 bucket_busy."""
     try:
         with acquire_bucket_lock(bucket_id, timeout=timeout):
-            yield
-    except BucketBusyError as problem:
-        raise ApiError(409, "bucket_busy", message) from problem
-
-
-@contextmanager
-def require_bucket_locks(
-    bucket_ids: Iterable[uuid.UUID],
-    *,
-    timeout: float = 0,
-    message: str = (
-        "One of the target collections is currently locked by another operation or deletion. "
-        "Wait for it to finish and try again."
-    ),
-) -> Iterator[None]:
-    """Acquire multiple collection locks for an HTTP handler or raise 409 bucket_busy."""
-    try:
-        with acquire_bucket_locks(bucket_ids, timeout=timeout):
             yield
     except BucketBusyError as problem:
         raise ApiError(409, "bucket_busy", message) from problem

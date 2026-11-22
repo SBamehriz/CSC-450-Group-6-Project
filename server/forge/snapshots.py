@@ -16,7 +16,6 @@ from forge.db import get_engine
 from forge.errors import ApiError
 from forge.jobs import Canceled, report
 from forge.models import Bucket, Dataset, Document, Job
-from forge.storage import acquire_bucket_lock
 
 
 def file_hash(path: Path) -> str:
@@ -297,31 +296,26 @@ def execute_snapshot_job(job_id: uuid.UUID) -> None:
         bucket_id = uuid.UUID(str(job.payload["bucket_id"]))
         fraction = float(job.payload.get("validation_fraction", 0.1))
         seed = int(job.payload.get("seed", 42))
+        dataset = session.get(Dataset, target_id)
+        bucket = session.get(Bucket, bucket_id)
+        if dataset is None or bucket is None:
+            job.status = "failed"
+            job.error = "The dataset or bucket no longer exists."
+            job.completed_at = datetime.now(UTC)
+            session.commit()
+            return
+        if job.cancel_requested:
+            job.status = "cancelled"
+            dataset.status = "failed"
+            job.completed_at = datetime.now(UTC)
+            session.commit()
+            return
+        job.status = "running"
+        dataset.status = "processing"
+        job.started_at = datetime.now(UTC)
+        session.commit()
 
     try:
-        with acquire_bucket_lock(bucket_id, timeout=5), Session(get_engine()) as session:
-            job = session.get(Job, job_id)
-            if job is None:
-                return
-            dataset = session.get(Dataset, target_id)
-            bucket = session.get(Bucket, bucket_id)
-            if dataset is None or bucket is None:
-                job.status = "failed"
-                job.error = "The dataset or bucket no longer exists."
-                job.completed_at = datetime.now(UTC)
-                session.commit()
-                return
-            if job.cancel_requested:
-                job.status = "cancelled"
-                dataset.status = "failed"
-                job.completed_at = datetime.now(UTC)
-                session.commit()
-                return
-            job.status = "running"
-            dataset.status = "processing"
-            job.started_at = datetime.now(UTC)
-            session.commit()
-
         write_snapshot_streaming(target_id, bucket_id, fraction, seed, job_id=job_id)
         with Session(get_engine()) as session:
             job = session.get(Job, job_id)

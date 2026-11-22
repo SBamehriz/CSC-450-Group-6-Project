@@ -15,7 +15,6 @@ from forge.errors import ApiError
 from forge.models import Bucket, Dataset, Document, Job, Run
 from forge.schemas import DatasetCreate, DatasetOut, JobPayload, JobProgress, Page, SnapshotCheck
 from forge.snapshots import archive_path, read_snapshot, stored_ok
-from forge.storage import require_bucket_lock
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -62,98 +61,92 @@ def list_datasets(
 
 @router.post("", response_model=DatasetOut, status_code=201)
 def create_dataset(payload: DatasetCreate, session: Session = Depends(get_session)) -> DatasetOut:
-    with require_bucket_lock(payload.bucket_id):
-        session.rollback()
-        if session.scalar(select(Dataset.id).where(Dataset.name == payload.name)) is not None:
-            raise ApiError(409, "name_taken", f"A dataset named {payload.name!r} already exists.")
-        bucket = session.get(Bucket, payload.bucket_id)
-        if bucket is None:
-            raise ApiError(404, "not_found", "No collection with that id.")
-        pending = session.scalar(
-            select(Document.id)
-            .where(Document.bucket_id == payload.bucket_id, Document.status == "pending")
-            .limit(1)
+    if session.scalar(select(Dataset.id).where(Dataset.name == payload.name)) is not None:
+        raise ApiError(409, "name_taken", f"A dataset named {payload.name!r} already exists.")
+    bucket = session.get(Bucket, payload.bucket_id)
+    if bucket is None:
+        raise ApiError(404, "not_found", "No collection with that id.")
+    pending = session.scalar(
+        select(Document.id)
+        .where(Document.bucket_id == payload.bucket_id, Document.status == "pending")
+        .limit(1)
+    )
+    if pending is not None:
+        raise ApiError(
+            409, "not_ready", "Some files are still being read. Try again once they finish."
         )
-        if pending is not None:
-            raise ApiError(
-                409, "not_ready", "Some files are still being read. Try again once they finish."
-            )
-        parsed_count = (
-            session.scalar(
-                select(func.count())
-                .select_from(Document)
-                .where(Document.bucket_id == payload.bucket_id, Document.status == "parsed")
-            )
-            or 0
+    parsed_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.bucket_id == payload.bucket_id, Document.status == "parsed")
         )
-        if parsed_count < 2:
-            raise ApiError(
-                422, "invalid_source", "Choose a collection with at least two parsed files."
-            )
+        or 0
+    )
+    if parsed_count < 2:
+        raise ApiError(422, "invalid_source", "Choose a collection with at least two parsed files.")
 
-        data_dir = get_settings().data_dir
-        free_bytes = shutil.disk_usage(data_dir).free
-        if free_bytes < 10 * 1024 * 1024:
-            raise ApiError(
-                503, "storage_unavailable", "Could not save the snapshot. Check free disk space."
-            )
-
-        dataset = Dataset(
-            id=uuid.uuid4(),
-            name=payload.name,
-            description=payload.description,
-            bucket_id=bucket.id,
-            status="processing",
-            config={
-                "seed": payload.seed,
-                "validation_fraction": payload.validation_fraction,
-                "bucket_name": bucket.name,
-            },
+    data_dir = get_settings().data_dir
+    free_bytes = shutil.disk_usage(data_dir).free
+    if free_bytes < 10 * 1024 * 1024:
+        raise ApiError(
+            503, "storage_unavailable", "Could not save the snapshot. Check free disk space."
         )
-        session.add(dataset)
-        session.flush()
 
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            from forge.db import get_engine
-            from forge.snapshots import write_snapshot_streaming
+    dataset = Dataset(
+        id=uuid.uuid4(),
+        name=payload.name,
+        description=payload.description,
+        bucket_id=bucket.id,
+        status="processing",
+        config={
+            "seed": payload.seed,
+            "validation_fraction": payload.validation_fraction,
+            "bucket_name": bucket.name,
+        },
+    )
+    session.add(dataset)
+    session.flush()
 
-            try:
-                session.commit()
-                write_snapshot_streaming(
-                    dataset.id, bucket.id, payload.validation_fraction, payload.seed
-                )
-                session.refresh(dataset)
-            except Exception:
-                with Session(get_engine()) as cleanup_sess:
-                    cleanup_ds = cleanup_sess.get(Dataset, dataset.id)
-                    if cleanup_ds:
-                        cleanup_sess.delete(cleanup_ds)
-                    cleanup_sess.commit()
-                raise
-            return _to_out(dataset)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        from forge.db import get_engine
+        from forge.snapshots import write_snapshot_streaming
 
-        job = Job(
-            job_type="snapshot_create",
-            payload=JobPayload(target_id=dataset.id, target_name=dataset.name).model_dump(
-                mode="json"
-            )
-            | {
-                "bucket_id": str(bucket.id),
-                "validation_fraction": payload.validation_fraction,
-                "seed": payload.seed,
-            },
-            progress=JobProgress(
-                completed=0, total=parsed_count, message="Queueing snapshot"
-            ).model_dump(),
-        )
-        session.add(job)
         try:
             session.commit()
-        except IntegrityError as problem:
-            session.rollback()
-            raise ApiError(
-                409, "name_taken", "That dataset name was just used. Choose another."
-            ) from problem
+            write_snapshot_streaming(
+                dataset.id, bucket.id, payload.validation_fraction, payload.seed
+            )
+            session.refresh(dataset)
+        except Exception:
+            with Session(get_engine()) as cleanup_sess:
+                cleanup_ds = cleanup_sess.get(Dataset, dataset.id)
+                if cleanup_ds:
+                    cleanup_sess.delete(cleanup_ds)
+                cleanup_sess.commit()
+            raise
+        return _to_out(dataset)
+
+    job = Job(
+        job_type="snapshot_create",
+        payload=JobPayload(target_id=dataset.id, target_name=dataset.name).model_dump(mode="json")
+        | {
+            "bucket_id": str(bucket.id),
+            "validation_fraction": payload.validation_fraction,
+            "seed": payload.seed,
+        },
+        progress=JobProgress(
+            completed=0, total=parsed_count, message="Queueing snapshot"
+        ).model_dump(),
+    )
+    session.add(job)
+    try:
+        session.commit()
+    except IntegrityError as problem:
+        session.rollback()
+        raise ApiError(
+            409, "name_taken", "That dataset name was just used. Choose another."
+        ) from problem
 
     from forge.jobs_api import _start
 

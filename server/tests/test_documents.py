@@ -591,3 +591,26 @@ def test_one_file_cannot_mix_conversations_and_plain_text(client, bucket):
     assert body["outcomes"][0]["error"] == (
         "This file mixes conversations and plain text. Keep one kind in a file."
     )
+
+
+def test_move_plain_text_into_conversation_bucket_is_rejected(client, bucket, other_bucket):
+    # Upload a plain-text document to the source collection.
+    text_body = upload(client, bucket, [("plain.txt", TEXT)]).json()
+    document_id = text_body["outcomes"][0]["document_id"]
+
+    # Upload conversation data to the destination collection.
+    chat_body = upload(client, other_bucket, [("conversation.jsonl", talks(ASK))]).json()
+    assert chat_body["parsed"] == 1
+
+    # Attempt to move plain text into the conversation collection.
+    response = client.post(
+        f"/api/documents/{document_id}/move",
+        json={"bucket_id": other_bucket},
+    )
+
+    # The move must be rejected.
+    assert response.status_code == 409
+
+    # The document must remain in its original collection.
+    original = client.get(f"/api/documents?bucket_id={bucket}").json()
+    assert any(item["id"] == document_id for item in original["items"])

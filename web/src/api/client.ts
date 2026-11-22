@@ -179,6 +179,8 @@ export const api = {
   listAllModels: () => allPages<Model>('/models'),
   deleteModel: (id: string) => request<void>(`/models/${id}`, { method: 'DELETE' }),
 
+  deleteAllModels: () => request<void>('/models/all?confirm=true', { method: 'DELETE' }),
+
   // Runs and Training History
   listRuns: (params?: { status?: string; offset?: number; limit?: number }) => {
     const query = new URLSearchParams();

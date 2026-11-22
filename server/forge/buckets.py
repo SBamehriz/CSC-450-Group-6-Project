@@ -136,28 +136,22 @@ def get_bucket(bucket_id: uuid.UUID, session: Session = Depends(get_session)) ->
 def update_bucket(
     bucket_id: uuid.UUID, payload: BucketUpdate, session: Session = Depends(get_session)
 ) -> BucketOut:
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        bucket = _load_one(session, bucket_id)
+    bucket = _load_one(session, bucket_id)
 
-        if payload.name is not None and payload.name != bucket.name:
-            clash = session.execute(
-                select(Bucket).where(Bucket.name == payload.name)
-            ).scalar_one_or_none()
-            if clash is not None:
-                raise ApiError(
-                    409,
-                    "name_taken",
-                    f"A bucket named {payload.name!r} already exists.",
-                )
-            bucket.name = payload.name
+    if payload.name is not None and payload.name != bucket.name:
+        clash = session.execute(
+            select(Bucket).where(Bucket.name == payload.name)
+        ).scalar_one_or_none()
+        if clash is not None:
+            raise ApiError(409, "name_taken", f"A bucket named {payload.name!r} already exists.")
+        bucket.name = payload.name
 
-        if payload.description is not None:
-            bucket.description = payload.description
+    if payload.description is not None:
+        bucket.description = payload.description
 
-        session.commit()
-        documents, parsed, chars = _stats_for(session, bucket_id)
-        return _to_out(bucket, documents, parsed, chars)
+    session.commit()
+    documents, parsed, chars = _stats_for(session, bucket_id)
+    return _to_out(bucket, documents, parsed, chars)
 
 
 @dataclass(frozen=True)
@@ -365,27 +359,21 @@ def start_dataset_import(
     session: Session = Depends(get_session),
 ) -> JobOut:
     """Queue a background import job to stream Hugging Face records into this collection."""
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        _load_one(session, bucket_id)
-
+    bucket = _load_one(session, bucket_id)
     use = validate_import_params(payload.dataset, payload)
+    problem = kind_problem(session, bucket, use)
+    if problem:
+        raise ApiError(409, "wrong_kind", problem)
 
-    with require_bucket_lock(bucket_id):
-        session.rollback()
-        bucket = _load_one(session, bucket_id)
-        problem = kind_problem(session, bucket, use)
-        if problem:
-            raise ApiError(409, "wrong_kind", problem)
-        job = Job(
-            job_type="dataset_import",
-            payload={
-                **JobPayload(target_id=bucket.id, target_name=bucket.name).model_dump(mode="json"),
-                **payload.model_dump(mode="json"),
-                "use": use,
-            },
-        )
-        session.add(job)
-        session.commit()
+    job = Job(
+        job_type="dataset_import",
+        payload={
+            **JobPayload(target_id=bucket.id, target_name=bucket.name).model_dump(mode="json"),
+            **payload.model_dump(mode="json"),
+            "use": use,
+        },
+    )
+    session.add(job)
+    session.commit()
     jobs.start_runner()
     return JobOut.model_validate(job)

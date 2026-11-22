@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-import { ApiError, api, type Model } from '../api/client';
+import { ApiError, api, type EvalResult, type Model } from '../api/client';
 import { open } from '../test-utils';
 import ModelsPage from './ModelsPage';
 
@@ -149,4 +149,105 @@ it('renders saved models list and handles deletion', async () => {
   await waitFor(() => {
     expect(deleteSpy).toHaveBeenCalledWith('model-1');
   });
+});
+
+it('renders saved evaluation results with zero values preserved and missing values handled', async () => {
+  const results: EvalResult[] = [
+    {
+      id: 'res-bench-zero',
+      result_type: 'benchmark',
+      model_id: 'model-1',
+      model_name: 'nano-science',
+      checkpoint_id: null,
+      evaluation_id: 'ev-1',
+      settings: {},
+      code_version: null,
+      prompt: null,
+      answer: null,
+      bpb: null,
+      total_nll: null,
+      scored_bytes: null,
+      scored_tokens: null,
+      benchmark_name: 'zero-bench',
+      benchmark_score: 0,
+      benchmark_scores: {},
+      created_at: '2026-10-23T12:00:00Z',
+    },
+    {
+      id: 'res-bench-missing',
+      result_type: 'benchmark',
+      model_id: 'model-1',
+      model_name: 'nano-science',
+      checkpoint_id: null,
+      evaluation_id: 'ev-2',
+      settings: {},
+      code_version: null,
+      prompt: null,
+      answer: null,
+      bpb: null,
+      total_nll: null,
+      scored_bytes: null,
+      scored_tokens: null,
+      benchmark_name: 'missing-bench',
+      score: null,
+      benchmark_score: null,
+      benchmark_scores: {},
+      created_at: '2026-10-23T12:01:00Z',
+    },
+    {
+      id: 'res-bpb-zero',
+      result_type: 'bpb',
+      model_id: 'model-1',
+      model_name: 'nano-science',
+      checkpoint_id: null,
+      evaluation_id: 'ev-3',
+      settings: { dataset_name: 'zero-bpb-ds' },
+      code_version: null,
+      prompt: null,
+      answer: null,
+      bpb: 0,
+      total_nll: 0,
+      scored_bytes: 0,
+      scored_tokens: 100,
+      benchmark_name: null,
+      score: null,
+      benchmark_score: null,
+      benchmark_scores: {},
+      created_at: '2026-10-23T12:02:00Z',
+    },
+    {
+      id: 'res-bpb-missing',
+      result_type: 'bpb',
+      model_id: 'model-1',
+      model_name: 'nano-science',
+      checkpoint_id: null,
+      evaluation_id: 'ev-4',
+      settings: { dataset_name: 'missing-bpb-ds' },
+      code_version: null,
+      prompt: null,
+      answer: null,
+      bpb: null,
+      total_nll: null,
+      scored_bytes: null,
+      scored_tokens: null,
+      benchmark_name: null,
+      score: null,
+      benchmark_score: null,
+      benchmark_scores: {},
+      created_at: '2026-10-23T12:03:00Z',
+    },
+  ];
+  vi.spyOn(api, 'listEvalResults').mockResolvedValue(results);
+
+  showPage();
+
+  expect(await screen.findByText('zero-bench')).toBeTruthy();
+  expect(screen.getByText('missing-bench')).toBeTruthy();
+  expect(screen.getByText('zero-bpb-ds')).toBeTruthy();
+  expect(screen.getByText('missing-bpb-ds')).toBeTruthy();
+
+  const zeros = screen.getAllByText('0.0000');
+  expect(zeros).toHaveLength(3); // benchmark zero + bpb zero + val loss zero
+  expect(screen.getAllByText('Val loss (nats):')).toHaveLength(1);
+  expect(screen.getAllByText('—')).toHaveLength(2); // missing benchmark score + missing bpb
 });

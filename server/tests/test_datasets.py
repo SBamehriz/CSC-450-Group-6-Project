@@ -95,7 +95,7 @@ def test_same_seed_same_split_and_frozen_after_source_delete(client):
     documents = client.get(f"/api/documents?bucket_id={bucket['id']}").json()["items"]
     for document in documents:
         assert client.delete(f"/api/documents/{document['id']}").status_code == 204
-    assert client.delete(f"/api/buckets/{bucket['id']}").status_code == 204
+    assert client.delete(f"/api/buckets/{bucket['id']}?confirm=true").status_code == 204
     assert download(first) == original
     assert client.get(f"/api/datasets/{first['id']}").json()["bucket_id"] is None
 

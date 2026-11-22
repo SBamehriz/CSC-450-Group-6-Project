@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { DOCUMENT_PAGE, api, type Document } from '../api/client';
+import DeleteCollectionDialog, { type DeleteTarget } from '../components/DeleteCollectionDialog';
 import {
   Card,
   CardHead,
@@ -40,6 +41,7 @@ const STATUS_TONE: Record<string, Tone> = {
 
 export default function BucketDetailPage() {
   const { bucketId = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<FilterKey>(
@@ -49,6 +51,7 @@ export default function BucketDetailPage() {
   const [explain, setExplain] = useState(false);
   const openId = params.get('open');
   const [offset, setOffset] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const openDocument = (id: string | null) => {
     setParams(
       (previous) => {
@@ -122,7 +125,16 @@ export default function BucketDetailPage() {
             {compactNumber(stats.est_tokens)} tokens.
           </p>
         </div>
-        <ExplainToggle checked={explain} onChange={setExplain} />
+        <div className="actions">
+          <ExplainToggle checked={explain} onChange={setExplain} />
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setDeleteTarget({ id: bucket.data.id, name: bucket.data.name })}
+          >
+            Delete collection
+          </button>
+        </div>
       </div>
       {explain ? (
         <div className="help-panel">
@@ -259,6 +271,11 @@ export default function BucketDetailPage() {
           </div>
         ) : null}
       </Card>
+      <DeleteCollectionDialog
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => navigate('/data', { replace: true })}
+      />
     </>
   );
 }

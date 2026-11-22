@@ -1,6 +1,8 @@
 import type { components } from './types';
 
 export type Bucket = components['schemas']['BucketOut'];
+export type BucketActiveJob = components['schemas']['BucketActiveJob'];
+export type BucketDeletionSummary = components['schemas']['BucketDeletionSummary'];
 export type BucketPage = components['schemas']['Page_BucketOut_'];
 export type Health = components['schemas']['Health'];
 export type Document = components['schemas']['DocumentOut'];
@@ -120,7 +122,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, description }),
     }),
-  deleteBucket: (id: string) => request<void>(`/buckets/${id}`, { method: 'DELETE' }),
+  bucketDeletionSummary: (id: string) =>
+    request<BucketDeletionSummary>(`/buckets/${id}/deletion-summary`),
+  deleteBucket: (id: string, options: { confirm: true; scopeToken: string }) => {
+    const query = new URLSearchParams({
+      confirm: String(options.confirm),
+      scope_token: options.scopeToken,
+    });
+    return request<void>(`/buckets/${id}?${query.toString()}`, { method: 'DELETE' });
+  },
 
   uploadDocuments: (bucketId: string, files: File[], sourceNote: string) => {
     const form = new FormData();

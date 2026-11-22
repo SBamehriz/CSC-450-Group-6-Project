@@ -1,7 +1,9 @@
+import hashlib
 import uuid
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from forge import jobs
@@ -10,7 +12,9 @@ from forge.db import get_session
 from forge.errors import ApiError
 from forge.models import Bucket, Document, Job
 from forge.schemas import (
+    BucketActiveJob,
     BucketCreate,
+    BucketDeletionSummary,
     BucketOut,
     BucketStats,
     BucketUpdate,
@@ -21,10 +25,18 @@ from forge.schemas import (
     JobPayload,
     Page,
 )
+from forge.storage import (
+    FileAccounting,
+    InvalidStoragePathError,
+    account_storage_files,
+    delete_storage_files,
+    require_bucket_lock,
+)
 
 router = APIRouter(prefix="/buckets", tags=["buckets"])
 
 CHARS_PER_TOKEN = 4
+EXTERNAL_URI_CHUNK = 500
 
 
 def _stats_subquery():
@@ -142,18 +154,195 @@ def update_bucket(
     return _to_out(bucket, documents, parsed, chars)
 
 
-@router.delete("/{bucket_id}", status_code=204)
-def delete_bucket(bucket_id: uuid.UUID, session: Session = Depends(get_session)) -> Response:
-    bucket = _load_one(session, bucket_id)
-    documents, _, _ = _stats_for(session, bucket_id)
-    if documents:
-        raise ApiError(
-            409,
-            "bucket_not_empty",
-            f"This bucket still has {documents} document(s). Move or delete them first.",
+@dataclass(frozen=True)
+class _DeletionPlan:
+    summary: BucketDeletionSummary
+    accounting: FileAccounting
+
+
+def _matches_bucket_id(raw: object, bucket_id: uuid.UUID) -> bool:
+    if raw is None:
+        return False
+    try:
+        return uuid.UUID(str(raw)) == bucket_id
+    except ValueError:
+        return False
+
+
+def _active_jobs_for(session: Session, bucket_id: uuid.UUID) -> list[BucketActiveJob]:
+    active: list[BucketActiveJob] = []
+    rows = session.scalars(
+        select(Job)
+        .where(
+            Job.job_type.in_(("dataset_import", "snapshot_create")),
+            Job.status.in_(("pending", "running")),
         )
-    session.delete(bucket)
-    session.commit()
+        .order_by(Job.created_at)
+    )
+    for job in rows:
+        payload = job.payload or {}
+        owner_id = (
+            payload.get("target_id")
+            if job.job_type == "dataset_import"
+            else payload.get("bucket_id")
+        )
+        if _matches_bucket_id(owner_id, bucket_id):
+            active.append(BucketActiveJob(id=job.id, job_type=job.job_type, status=job.status))
+    return active
+
+
+def _preserved_external_uris(
+    session: Session, bucket_id: uuid.UUID, candidate_uris: list[str]
+) -> set[str]:
+    preserved: set[str] = set()
+    for start in range(0, len(candidate_uris), EXTERNAL_URI_CHUNK):
+        chunk = candidate_uris[start : start + EXTERNAL_URI_CHUNK]
+        for uri in session.scalars(
+            select(Document.raw_uri)
+            .where(Document.bucket_id != bucket_id, Document.raw_uri.in_(chunk))
+            .distinct()
+        ):
+            if uri:
+                preserved.add(uri)
+        for uri in session.scalars(
+            select(Document.text_uri)
+            .where(Document.bucket_id != bucket_id, Document.text_uri.in_(chunk))
+            .distinct()
+        ):
+            if uri:
+                preserved.add(uri)
+    return preserved
+
+
+def _build_deletion_plan(session: Session, bucket: Bucket) -> _DeletionPlan:
+    doc_count = 0
+    raw_uris: set[str] = set()
+    text_uris: set[str] = set()
+    doc_digest = hashlib.sha256()
+
+    rows = session.execute(
+        select(Document.id, Document.raw_uri, Document.text_uri)
+        .where(Document.bucket_id == bucket.id)
+        .order_by(Document.id)
+    ).yield_per(1000)
+
+    for doc_id, raw_uri, text_uri in rows:
+        doc_count += 1
+        if raw_uri:
+            raw_uris.add(raw_uri)
+        if text_uri:
+            text_uris.add(text_uri)
+        doc_digest.update(f"{doc_id}|{raw_uri}|{text_uri or ''}\n".encode())
+
+    preserved_uris = _preserved_external_uris(session, bucket.id, sorted(raw_uris | text_uris))
+    try:
+        accounting = account_storage_files(
+            sorted(raw_uris),
+            sorted(text_uris),
+            preserved_uris=preserved_uris,
+        )
+    except InvalidStoragePathError as problem:
+        raise ApiError(409, "invalid_storage_path", str(problem)) from problem
+
+    active_jobs = _active_jobs_for(session, bucket.id)
+
+    scope_hash = hashlib.sha256()
+    scope_hash.update(f"{bucket.id}\n{bucket.name}\n{doc_count}\n".encode())
+    scope_hash.update(doc_digest.digest())
+    for fp in accounting.file_fingerprints:
+        scope_hash.update(f"{fp}\n".encode())
+
+    summary = BucketDeletionSummary(
+        bucket_id=bucket.id,
+        bucket_name=bucket.name,
+        document_count=doc_count,
+        raw_file_count=accounting.raw_file_count,
+        text_file_count=accounting.text_file_count,
+        physical_file_count=accounting.physical_file_count,
+        raw_bytes=accounting.raw_bytes,
+        text_bytes=accounting.text_bytes,
+        total_bytes=accounting.total_bytes,
+        shared_file_count=accounting.shared_file_count,
+        missing_file_count=accounting.missing_file_count,
+        active_jobs=active_jobs,
+        scope_token=scope_hash.hexdigest(),
+    )
+    return _DeletionPlan(summary=summary, accounting=accounting)
+
+
+@router.get("/{bucket_id}/deletion-summary", response_model=BucketDeletionSummary)
+def get_bucket_deletion_summary(
+    bucket_id: uuid.UUID, session: Session = Depends(get_session)
+) -> BucketDeletionSummary:
+    """Compute a read-only summary of documents and exclusively owned files to be removed."""
+    bucket = _load_one(session, bucket_id)
+    return _build_deletion_plan(session, bucket).summary
+
+
+@router.delete("/{bucket_id}", status_code=204)
+def delete_bucket(
+    bucket_id: uuid.UUID,
+    confirm: bool = Query(default=False),
+    scope_token: str | None = Query(default=None),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Delete a collection, its document records, and exclusively owned files after confirmation."""
+    if not confirm:
+        _load_one(session, bucket_id)
+        raise ApiError(
+            400,
+            "confirmation_required",
+            "Explicit confirmation is required to delete a collection.",
+        )
+
+    with require_bucket_lock(
+        bucket_id,
+        message=(
+            "This collection is currently busy with an active operation. "
+            "Wait for it to finish and try again."
+        ),
+    ):
+        # Reset any earlier transaction snapshot before reading under the collection lock.
+        session.rollback()
+        bucket = _load_one(session, bucket_id)
+
+        if _active_jobs_for(session, bucket_id):
+            raise ApiError(
+                409,
+                "bucket_busy",
+                "This collection has an active import or snapshot job. "
+                "Wait for it to finish or cancel it before deleting.",
+            )
+
+        plan = _build_deletion_plan(session, bucket)
+        if scope_token is not None and scope_token != plan.summary.scope_token:
+            raise ApiError(
+                409,
+                "scope_changed",
+                "This collection changed after the deletion summary was loaded. "
+                "Review the updated summary and confirm again.",
+            )
+
+        try:
+            result = delete_storage_files(
+                plan.accounting.owned_raw_paths + plan.accounting.owned_text_paths
+            )
+        except InvalidStoragePathError as problem:
+            raise ApiError(409, "invalid_storage_path", str(problem)) from problem
+
+        if result.failed:
+            first = result.failed[0]
+            raise ApiError(
+                500,
+                "cleanup_failed",
+                f"Incomplete cleanup: deleted {result.deleted_count} file(s), "
+                f"{result.missing_count} already missing, {len(result.failed)} failed "
+                f"({first.uri}: {first.error}). The collection record was kept so you can retry.",
+            )
+
+        session.execute(delete(Document).where(Document.bucket_id == bucket.id))
+        session.delete(bucket)
+        session.commit()
     return Response(status_code=204)
 
 

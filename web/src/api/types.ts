@@ -50,12 +50,35 @@ export interface paths {
     get: operations['get_bucket_api_buckets__bucket_id__get'];
     put?: never;
     post?: never;
-    /** Delete Bucket */
+    /**
+     * Delete Bucket
+     * @description Delete a collection, its document records, and exclusively owned files after confirmation.
+     */
     delete: operations['delete_bucket_api_buckets__bucket_id__delete'];
     options?: never;
     head?: never;
     /** Update Bucket */
     patch: operations['update_bucket_api_buckets__bucket_id__patch'];
+    trace?: never;
+  };
+  '/api/buckets/{bucket_id}/deletion-summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Bucket Deletion Summary
+     * @description Compute a read-only summary of documents and exclusively owned files to be removed.
+     */
+    get: operations['get_bucket_deletion_summary_api_buckets__bucket_id__deletion_summary_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/api/buckets/huggingface/inspect': {
@@ -1335,6 +1358,18 @@ export interface components {
        */
       created_at: string;
     };
+    /** BucketActiveJob */
+    BucketActiveJob: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Job Type */
+      job_type: string;
+      /** Status */
+      status: string;
+    };
     /** BucketCreate */
     BucketCreate: {
       /** Name */
@@ -1344,6 +1379,38 @@ export interface components {
        * @default
        */
       description: string;
+    };
+    /** BucketDeletionSummary */
+    BucketDeletionSummary: {
+      /**
+       * Bucket Id
+       * Format: uuid
+       */
+      bucket_id: string;
+      /** Bucket Name */
+      bucket_name: string;
+      /** Document Count */
+      document_count: number;
+      /** Raw File Count */
+      raw_file_count: number;
+      /** Text File Count */
+      text_file_count: number;
+      /** Physical File Count */
+      physical_file_count: number;
+      /** Raw Bytes */
+      raw_bytes: number;
+      /** Text Bytes */
+      text_bytes: number;
+      /** Total Bytes */
+      total_bytes: number;
+      /** Shared File Count */
+      shared_file_count: number;
+      /** Missing File Count */
+      missing_file_count: number;
+      /** Active Jobs */
+      active_jobs: components['schemas']['BucketActiveJob'][];
+      /** Scope Token */
+      scope_token: string;
     };
     /** BucketOut */
     BucketOut: {
@@ -3037,7 +3104,10 @@ export interface operations {
   };
   delete_bucket_api_buckets__bucket_id__delete: {
     parameters: {
-      query?: never;
+      query?: {
+        confirm?: boolean;
+        scope_token?: string | null;
+      };
       header?: never;
       path: {
         bucket_id: string;
@@ -3086,6 +3156,37 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['BucketOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_bucket_deletion_summary_api_buckets__bucket_id__deletion_summary_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        bucket_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['BucketDeletionSummary'];
         };
       };
       /** @description Validation Error */

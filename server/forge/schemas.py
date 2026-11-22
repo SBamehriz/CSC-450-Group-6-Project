@@ -78,6 +78,28 @@ class BucketOut(BaseModel):
     kind: str = "text"
 
 
+class BucketActiveJob(BaseModel):
+    id: uuid.UUID
+    job_type: str
+    status: str
+
+
+class BucketDeletionSummary(BaseModel):
+    bucket_id: uuid.UUID
+    bucket_name: str
+    document_count: int
+    raw_file_count: int
+    text_file_count: int
+    physical_file_count: int
+    raw_bytes: int
+    text_bytes: int
+    total_bytes: int
+    shared_file_count: int
+    missing_file_count: int
+    active_jobs: list[BucketActiveJob]
+    scope_token: str
+
+
 class DocumentOut(BaseModel):
     id: uuid.UUID
     bucket_id: uuid.UUID

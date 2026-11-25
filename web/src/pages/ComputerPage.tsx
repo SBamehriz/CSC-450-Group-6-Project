@@ -85,7 +85,7 @@ function AppearanceCard() {
     </Card>
   );
 }
-function DeleteAllChatsCard(): import("react").JSX.Element {
+function DeleteAllChatsCard(): import('react').JSX.Element {
   const [confirmation, setConfirmation] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [message, setMessage] = useState('');
@@ -109,8 +109,7 @@ function DeleteAllChatsCard(): import("react").JSX.Element {
 
       <div className="card-body stack">
         <p className="muted">
-          Remove saved conversations. Your models and datasets
-          will not be affected.
+          Remove saved conversations. Your models and datasets will not be affected.
         </p>
 
         {!showConfirmation ? (
@@ -127,16 +126,12 @@ function DeleteAllChatsCard(): import("react").JSX.Element {
         ) : (
           <>
             <label className="field">
-              <span className="label">
-                Type Delete to confirm
-              </span>
+              <span className="label">Type Delete to confirm</span>
 
               <input
                 className="input"
                 value={confirmation}
-                onChange={(event) =>
-                  setConfirmation(event.target.value)
-                }
+                onChange={(event) => setConfirmation(event.target.value)}
                 placeholder="Delete"
               />
             </label>
@@ -170,7 +165,6 @@ function DeleteAllChatsCard(): import("react").JSX.Element {
     </Card>
   );
 }
-
 
 function SpeedTestCard() {
   const queryClient = useQueryClient();

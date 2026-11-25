@@ -136,9 +136,7 @@ it('deletes saved browser chats only after confirmation', async () => {
   try {
     open(<ComputerPage />);
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Delete All Chats' }),
-    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete All Chats' }));
 
     const confirm = screen.getByRole('button', {
       name: 'Confirm deletion',

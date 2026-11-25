@@ -30,6 +30,7 @@ export default function ComputerPage() {
       </div>
 
       <AppearanceCard />
+      <DeleteAllChatsCard />
 
       <Card>
         <CardHead
@@ -84,6 +85,92 @@ function AppearanceCard() {
     </Card>
   );
 }
+function DeleteAllChatsCard(): import("react").JSX.Element {
+  const [confirmation, setConfirmation] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [message, setMessage] = useState('');
+
+  function deleteChats() {
+    if (confirmation !== 'Delete') return;
+
+    try {
+      window.localStorage.removeItem('forge.chat.v1');
+      setMessage('Browser chat data deleted.');
+      setConfirmation('');
+      setShowConfirmation(false);
+    } catch {
+      setMessage('Could not delete browser chat data.');
+    }
+  }
+
+  return (
+    <Card>
+      <CardHead title="Delete all chats" />
+
+      <div className="card-body stack">
+        <p className="muted">
+          Remove saved conversations. Your models and datasets
+          will not be affected.
+        </p>
+
+        {!showConfirmation ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setMessage('');
+              setShowConfirmation(true);
+            }}
+          >
+            Delete All Chats
+          </button>
+        ) : (
+          <>
+            <label className="field">
+              <span className="label">
+                Type Delete to confirm
+              </span>
+
+              <input
+                className="input"
+                value={confirmation}
+                onChange={(event) =>
+                  setConfirmation(event.target.value)
+                }
+                placeholder="Delete"
+              />
+            </label>
+
+            <div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={confirmation !== 'Delete'}
+                onClick={deleteChats}
+              >
+                Confirm deletion
+              </button>
+
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setShowConfirmation(false);
+                  setConfirmation('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+
+        {message && <p role="status">{message}</p>}
+      </div>
+    </Card>
+  );
+}
+
 
 function SpeedTestCard() {
   const queryClient = useQueryClient();

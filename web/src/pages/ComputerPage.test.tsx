@@ -128,3 +128,35 @@ it('runs a speed test and shows its progress', async () => {
     expect(api.startSpeedTest).toHaveBeenCalledWith({ sequences_per_step: 4, device: 'auto' }),
   );
 });
+
+it('deletes saved browser chats only after confirmation', async () => {
+  window.localStorage.setItem('forge.chat.v1', 'saved chat');
+  window.localStorage.setItem('forge.other.setting', 'keep this');
+
+  try {
+    open(<ComputerPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete All Chats' }));
+
+    const confirm = screen.getByRole('button', {
+      name: 'Confirm deletion',
+    });
+
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByPlaceholderText('Delete'), {
+      target: { value: 'Delete' },
+    });
+
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(confirm);
+
+    expect(window.localStorage.getItem('forge.chat.v1')).toBeNull();
+    expect(window.localStorage.getItem('forge.other.setting')).toBe('keep this');
+    expect(screen.getByText('Browser chat data deleted.')).toBeTruthy();
+  } finally {
+    window.localStorage.removeItem('forge.chat.v1');
+    window.localStorage.removeItem('forge.other.setting');
+  }
+});

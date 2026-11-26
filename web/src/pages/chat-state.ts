@@ -136,8 +136,8 @@ export function reduce(chat: Chat, action: Action): Chat {
           ) as Exchange['answers'],
         })),
       };
-      case 'load':
-        return action.chat;
+    case 'load':
+      return action.chat;
     case 'clear':
       return { ...chat, exchanges: [] };
     case 'model': {
@@ -153,7 +153,6 @@ export function reduce(chat: Chat, action: Action): Chat {
       };
     case 'settings':
       return { ...chat, settings: { ...chat.settings, ...action.settings } };
-
   }
 }
 

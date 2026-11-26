@@ -15,11 +15,15 @@ import {
   type Chat,
   HINTS,
   KEY,
+  loadHistory,
   newSeed,
   problems,
   reduce,
   restore,
+  saveHistory,
+  type SavedChat,
   type Settings,
+  fresh,
 } from './chat-state';
 
 const WANDER = 'This model has not learned to chat. Its answers may wander.';
@@ -146,13 +150,48 @@ function NumberSetting({
 
 function Conversation({ models }: { models: Model[] }) {
   const [params, setParams] = useSearchParams();
-  const [chat, dispatch] = useReducer(reduce, params, opening);
+  const [chat, dispatch] = useReducer(reduce, params, (initialParams) => {
+    const history = loadHistory();
+    const active = history.conversations.find((saved) => saved.id === history.activeId);
+
+    return active ? active.chat : opening(initialParams);
+  });
+  const [history, setHistory] = useState(loadHistory);
+  useEffect(() => {
+    saveHistory(history);
+  }, [history]);
   const [draft, setDraft] = useState('');
   const controllers = useRef(new Set<AbortController>());
   const box = useRef<HTMLTextAreaElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
 
+  const switchingRef = useRef(false);
+
+  useEffect(() => {
+    if (switchingRef.current) {
+      switchingRef.current = false;
+      return;
+    }
+
+    if (!history.activeId) return;
+
+    setHistory((previous) => ({
+      ...previous,
+      conversations: previous.conversations.map((saved) => {
+        if (saved.id !== previous.activeId) return saved;
+
+        return {
+          ...saved,
+          title: chat.exchanges[0]?.ask.slice(0, 60) || saved.title,
+          updatedAt: new Date().toISOString(),
+          chat,
+        };
+      }),
+    }));
+  }, [chat]);
   const byId = new Map(models.map((model) => [model.id, model]));
   const first = byId.get(chat.models[0]) ?? models.find((model) => model.chat) ?? models[0];
   const parent = first.parent_id ? byId.get(first.parent_id) : undefined;
@@ -228,6 +267,24 @@ function Conversation({ models }: { models: Model[] }) {
     const text = draft.trim();
     if (!text || writing || invalid) return;
     const next = act({ type: 'ask', text, seed: chat.settings.seed ?? newSeed() });
+    if (!history.activeId) {
+      const now = new Date().toISOString();
+      const id = crypto.randomUUID();
+
+      setHistory((previous) => ({
+        activeId: id,
+        conversations: [
+          {
+            id,
+            title: text.slice(0, 60),
+            createdAt: now,
+            updatedAt: now,
+            chat: next,
+          },
+          ...previous.conversations,
+        ],
+      }));
+    }
     setDraft('');
     follow.current = true;
     run(next, next.exchanges.length - 1, chat.side ? [0, 1] : [0]);
@@ -236,10 +293,130 @@ function Conversation({ models }: { models: Model[] }) {
     run(act({ type: 'retry', at, column }), at, [column]);
   };
   const set = (settings: Partial<Settings>) => dispatch({ type: 'settings', settings });
+  const newChat = () => {
+    stop();
 
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+
+    const next: Chat = {
+      ...chat,
+      exchanges: [],
+    };
+
+    const saved: SavedChat = {
+      id,
+      title: 'New conversation',
+      createdAt: now,
+      updatedAt: now,
+      chat: next,
+    };
+
+    setHistory((previous) => {
+      const conversations = [...previous.conversations];
+
+      if (previous.activeId) {
+        const index = conversations.findIndex((item) => item.id === previous.activeId);
+
+        if (index >= 0) {
+          conversations[index] = {
+            ...conversations[index],
+            chat,
+            updatedAt: now,
+          };
+        }
+      } else if (chat.exchanges.length) {
+        conversations.push({
+          id: crypto.randomUUID(),
+          title: chat.exchanges[0].ask.slice(0, 60),
+          createdAt: now,
+          updatedAt: now,
+          chat,
+        });
+      }
+
+      return {
+        activeId: id,
+        conversations: [saved, ...conversations],
+      };
+    });
+
+    dispatch({ type: 'load', chat: next });
+    setDraft('');
+    box.current?.focus();
+  };
+
+  const openChat = (saved: SavedChat) => {
+    if (writing || history.activeId === saved.id) return;
+
+    const now = new Date().toISOString();
+
+    setHistory((previous) => ({
+      ...previous,
+      activeId: saved.id,
+      conversations: previous.conversations.map((item) =>
+        item.id === previous.activeId ? { ...item, chat: chatRef.current, updatedAt: now } : item,
+      ),
+    }));
+
+    switchingRef.current = true;
+    dispatch({ type: 'load', chat: saved.chat });
+    setDraft('');
+    follow.current = true;
+  };
+  const deleteChat = (id: string) => {
+    const selected = history.conversations.find((item) => item.id === id);
+
+    if (!selected) return;
+
+    if (!window.confirm(`Delete "${selected.title}"? This cannot be undone.`)) {
+      return;
+    }
+    const deletingActive = history.activeId === id;
+
+    setHistory((previous) => ({
+      activeId: deletingActive ? null : previous.activeId,
+      conversations: previous.conversations.filter((item) => item.id !== id),
+    }));
+
+    if (deletingActive) {
+      dispatch({ type: 'load', chat: fresh() });
+      setDraft('');
+    }
+  };
   return (
     <>
       <Intro />
+      <Card>
+        <CardHead title="Chat history" />
+        <div className="card-body stack">
+          {history.conversations.length === 0 ? (
+            <p className="muted">No saved conversations yet.</p>
+          ) : (
+            history.conversations.map((saved) => (
+              <div key={saved.id} className="actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={writing}
+                  onClick={() => openChat(saved)}
+                >
+                  {saved.title}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={writing}
+                  aria-label={`Delete ${saved.title}`}
+                  onClick={() => deleteChat(saved.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
 
       <Card>
         <CardHead
@@ -266,11 +443,7 @@ function Conversation({ models }: { models: Model[] }) {
                 type="button"
                 className="btn btn-sm"
                 disabled={!chat.exchanges.length}
-                onClick={() => {
-                  stop();
-                  dispatch({ type: 'clear' });
-                  box.current?.focus();
-                }}
+                onClick={newChat}
               >
                 New chat
               </button>

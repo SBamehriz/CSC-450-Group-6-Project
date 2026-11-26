@@ -95,6 +95,7 @@ function DeleteAllChatsCard(): import('react').JSX.Element {
 
     try {
       window.localStorage.removeItem('forge.chat.v1');
+      window.localStorage.removeItem('forge.chat.history.v1');
       setMessage('Browser chat data deleted.');
       setConfirmation('');
       setShowConfirmation(false);

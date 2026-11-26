@@ -7,6 +7,7 @@ import {
 } from '../api/client';
 
 export const KEY = 'forge.chat.v1';
+export const HISTORY_KEY = 'forge.chat.history.v1';
 // server cap, system message included
 const MOST_TURNS = 200;
 const ENDED_EARLY = 'The model stopped before it finished this answer. Try again.';
@@ -41,6 +42,19 @@ export type Chat = {
   exchanges: Exchange[];
 };
 
+export type SavedChat = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  chat: Chat;
+};
+
+export type ChatHistory = {
+  activeId: string | null;
+  conversations: SavedChat[];
+};
+
 export type Action =
   | { type: 'ask'; text: string; seed: number }
   | { type: 'retry'; at: number; column: number }
@@ -49,6 +63,7 @@ export type Action =
   | { type: 'error'; at: number; column: number; message: string }
   | { type: 'stop' }
   | { type: 'clear' }
+  | { type: 'load'; chat: Chat }
   | { type: 'model'; column: number; id: string }
   | { type: 'side'; on: boolean; second?: string }
   | { type: 'settings'; settings: Partial<Settings> };
@@ -121,6 +136,8 @@ export function reduce(chat: Chat, action: Action): Chat {
           ) as Exchange['answers'],
         })),
       };
+      case 'load':
+        return action.chat;
     case 'clear':
       return { ...chat, exchanges: [] };
     case 'model': {
@@ -136,6 +153,7 @@ export function reduce(chat: Chat, action: Action): Chat {
       };
     case 'settings':
       return { ...chat, settings: { ...chat.settings, ...action.settings } };
+
   }
 }
 
@@ -279,5 +297,53 @@ export function restore(raw: string | null): Chat {
     };
   } catch {
     return fresh();
+  }
+}
+export function loadHistory(): ChatHistory {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return { activeId: null, conversations: [] };
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') {
+      return { activeId: null, conversations: [] };
+    }
+
+    const data = parsed as Partial<ChatHistory>;
+    if (!Array.isArray(data.conversations)) {
+      return { activeId: null, conversations: [] };
+    }
+
+    const conversations: SavedChat[] = [];
+
+    for (const item of data.conversations) {
+      if (
+        !item ||
+        typeof item.id !== 'string' ||
+        typeof item.title !== 'string' ||
+        typeof item.createdAt !== 'string' ||
+        typeof item.updatedAt !== 'string'
+      ) {
+        continue;
+      }
+
+      const chat = restore(JSON.stringify(item.chat));
+      conversations.push({ ...item, chat });
+    }
+
+    return {
+      activeId: typeof data.activeId === 'string' ? data.activeId : null,
+      conversations,
+    };
+  } catch {
+    return { activeId: null, conversations: [] };
+  }
+}
+
+export function saveHistory(history: ChatHistory): void {
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // Browser storage may be unavailable.
   }
 }
